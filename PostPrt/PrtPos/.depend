@@ -1,0 +1,3 @@
+main.o: main.f90  common.o io.o
+common.o: common.f90  
+io.o: io.f90  common.o

@@ -7,6 +7,10 @@
 module mod_bound
   use mpi
   use mod_common_mpi, only: ierr,halo,ipencil_axis
+#if defined(_PARTICLE)
+  use mod_common_mpi, only: halo_wide
+  use mod_param     , only: nh_wide,is_ibm
+#endif
   use mod_types
   implicit none
   private
@@ -29,18 +33,60 @@ module mod_bound
     logical :: impose_norm_bc
     integer :: idir,nh
     !
+#if !defined(_PARTICLE)
     nh = 1
+#else
+    if (.not.is_ibm) then
+      nh = 1
+    else
+      nh = nh_wide
+    endif
+#endif
     !
 #if !defined(_OPENACC)
+! No GPU
+#if !defined(_PARTICLE)
+! No Prt
     do idir = 1,3
       call updthalo(nh,halo(idir),nb(:,idir),idir,u)
       call updthalo(nh,halo(idir),nb(:,idir),idir,v)
       call updthalo(nh,halo(idir),nb(:,idir),idir,w)
     end do
 #else
+! Prt
+    if (.not.is_ibm) then  ! No IBM
+      do idir = 1,3
+        call updthalo(nh,halo(idir),nb(:,idir),idir,u)
+        call updthalo(nh,halo(idir),nb(:,idir),idir,v)
+        call updthalo(nh,halo(idir),nb(:,idir),idir,w)
+      end do
+    else  ! IBM
+      do idir = 1,3
+        call updthalo(nh,halo_wide(idir),nb(:,idir),idir,u)
+        call updthalo(nh,halo_wide(idir),nb(:,idir),idir,v)
+        call updthalo(nh,halo_wide(idir),nb(:,idir),idir,w)
+      end do
+    endif
+#endif
+#else
+! GPU
+#if !defined(_PARTICLE)
+! No Prt
     call updthalo_gpu(nh,cbc(0,:,1)//cbc(1,:,1)==['PP','PP','PP'],u)
     call updthalo_gpu(nh,cbc(0,:,2)//cbc(1,:,2)==['PP','PP','PP'],v)
     call updthalo_gpu(nh,cbc(0,:,3)//cbc(1,:,3)==['PP','PP','PP'],w)
+#else
+! Prt
+    if (.not.is_ibm) then  ! No IBM
+      call updthalo_gpu(nh,cbc(0,:,1)//cbc(1,:,1)==['PP','PP','PP'],u)
+      call updthalo_gpu(nh,cbc(0,:,2)//cbc(1,:,2)==['PP','PP','PP'],v)
+      call updthalo_gpu(nh,cbc(0,:,3)//cbc(1,:,3)==['PP','PP','PP'],w)
+    else  ! IBM
+      call updthalo_gpu_wide(nh,cbc(0,:,1)//cbc(1,:,1)==['PP','PP','PP'],u)
+      call updthalo_gpu_wide(nh,cbc(0,:,2)//cbc(1,:,2)==['PP','PP','PP'],v)
+      call updthalo_gpu_wide(nh,cbc(0,:,3)//cbc(1,:,3)==['PP','PP','PP'],w)
+    endif
+#endif
 #endif
     !
     impose_norm_bc = (.not.is_correc).or.(cbc(0,1,1)//cbc(1,1,1) == 'PP')
@@ -500,5 +546,36 @@ module mod_bound
     end select
     !$acc end host_data
   end subroutine updthalo_gpu
+#endif
+  !
+#if defined(_PARTICLE)
+#if defined(_OPENACC)
+  subroutine updthalo_gpu_wide(nh,periods,p)
+    use mod_types
+    use cudecomp
+    use mod_common_cudecomp, only: work => work_halo, &
+                                   ch => handle,gd => gd_halo_wide, &
+                                   dtype => cudecomp_real_rp, &
+                                   istream => istream_acc_queue_1
+    implicit none
+    integer , intent(in) :: nh
+    logical , intent(in) :: periods(3)
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
+    integer :: istat
+    !$acc host_data use_device(p,work)
+    select case(ipencil_axis)
+    case(1)
+      istat = cudecompUpdateHalosX(ch,gd,p,work,dtype,[nh,nh,nh],periods,2,stream=istream)
+      istat = cudecompUpdateHalosX(ch,gd,p,work,dtype,[nh,nh,nh],periods,3,stream=istream)
+    case(2)
+      istat = cudecompUpdateHalosY(ch,gd,p,work,dtype,[nh,nh,nh],periods,1,stream=istream)
+      istat = cudecompUpdateHalosY(ch,gd,p,work,dtype,[nh,nh,nh],periods,3,stream=istream)
+    case(3)
+      istat = cudecompUpdateHalosZ(ch,gd,p,work,dtype,[nh,nh,nh],periods,1,stream=istream)
+      istat = cudecompUpdateHalosZ(ch,gd,p,work,dtype,[nh,nh,nh],periods,2,stream=istream)
+    end select
+    !$acc end host_data
+  end subroutine updthalo_gpu_wide
+#endif
 #endif
 end module mod_bound

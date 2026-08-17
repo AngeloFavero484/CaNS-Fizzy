@@ -312,11 +312,12 @@ module mod_two_fluid
         z = zc_g(k)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
-            sdist = z-l(3)/2.
+            sdist = z-2*l(3)/3.
             psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
         end do
       end do
+      is_swap_pf = .true.
     case('cap-wav-1d')
       !
       ! initial condition for the capillary wave benchmark
@@ -330,8 +331,8 @@ module mod_two_fluid
         z = zc_g(k) - l(3)/2
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
-            x = (i-0.5)*dl(1)/l(1)
-            sdist = z - zfilm_max*cos(2*pi*x)
+!            x = (i-0.5)*dl(1)/l(1)
+            sdist = z!+0.01 !- zfilm_max*cos(2*pi*x)
             psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
         end do

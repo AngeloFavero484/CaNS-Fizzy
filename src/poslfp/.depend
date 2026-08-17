@@ -1,0 +1,3 @@
+lfp.o: lfp.f90  loadd.o param.o
+loadd.o: loadd.f90  param.o
+param.o: param.f90  

@@ -16,6 +16,9 @@ module mod_common_cudecomp
   integer :: cudecomp_real_rp
   type(cudecompHandle)     :: handle
   type(cudecompGridDesc)   :: gd_halo,gd_poi
+#if defined(_PARTICLE)
+  type(cudecompGridDesc)   :: gd_halo_wide
+#endif
   type(cudecompPencilInfo) :: ap_x,ap_y,ap_z,ap_x_poi,ap_y_poi,ap_z_poi
   !
   ! workspace stuff

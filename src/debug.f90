@@ -55,6 +55,7 @@ module mod_debug
                   (fpp(i,j,k  )-fpp(i,j,k-1))*dzci(k-1))*dzfi(k) )
             val = val*alpha
             diffmax = max(diffmax,abs(val-fp(i,j,k)))
+            !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val-fp(i,j,k),i,j,k
           end do
         end do
       end do
@@ -70,6 +71,7 @@ module mod_debug
                   (fpp(i,j,k  )-fpp(i,j,k-1))*dzfi(k ))*dzci(k) )
             val = val*alpha
             diffmax = max(diffmax,abs(val-fp(i,j,k)))
+            !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val,fp(i,j,k),i,j,k
           end do
         end do
       end do
@@ -106,6 +108,7 @@ module mod_debug
                ((fpp(i,j,k+1)-fpp(i,j,k  ))*dzci(k ) - &
                 (fpp(i,j,k  )-fpp(i,j,k-1))*dzci(k-1))*dzfi(k)
           diffmax = max(diffmax,abs(val-fp(i,j,k)))
+          !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val-fp(i,j,k),i,j,k
         end do
       end do
     end do

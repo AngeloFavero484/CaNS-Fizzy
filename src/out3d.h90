@@ -40,9 +40,23 @@
   call write_visu_3d(datadir,'psi_fld_'//fldnum//'.bin','log_visu_3d.out','Psi', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      psi(1:n(1),1:n(2),1:n(3)))
-  call write_visu_3d(datadir,'cur_fld_'//fldnum//'.bin','log_visu_3d.out','Kappa', &
+#if defined(_PARTICLE)
+  call write_visu_3d(datadir,'alx_fld_'//fldnum//'.bin','log_visu_3d.out','Alpha_C', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
-                     kappa(1:n(1),1:n(2),1:n(3)))
+                     alphac(1:n(1),1:n(2),1:n(3)))
+#endif
+!  call write_visu_3d(datadir,'fxo_fld_'//fldnum//'.bin','log_visu_3d.out','Fx_Old', &
+!                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+!                     fx_old(1:n(1),1:n(2),1:n(3)))
+!  call write_visu_3d(datadir,'fyo_fld_'//fldnum//'.bin','log_visu_3d.out','Fy_Old', &
+!                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+!                     fy_old(1:n(1),1:n(2),1:n(3)))
+!  call write_visu_3d(datadir,'fzo_fld_'//fldnum//'.bin','log_visu_3d.out','Fz_Old', &
+!                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+!                     fz_old(1:n(1),1:n(2),1:n(3)))
+!  call write_visu_3d(datadir,'cur_fld_'//fldnum//'.bin','log_visu_3d.out','Kappa', &
+!                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+!                     kappa(1:n(1),1:n(2),1:n(3)))
 #if defined(_SCALAR)
   call write_visu_3d(datadir,'sca_fld_'//fldnum//'.bin','log_visu_3d.out','Temperature', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &

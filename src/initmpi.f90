@@ -9,6 +9,10 @@ module mod_initmpi
   use decomp_2d
   use mod_common_mpi, only: myid,ierr,halo,ipencil => ipencil_axis
   use mod_types
+#if defined(_PARTICLE)
+  use mod_common_mpi, only: halo_wide
+  use mod_param,      only: nh_wide
+#endif
   !@acc use openacc
   !@acc use cudecomp
   !@cuf use cudafor, only: cudaGetDeviceCount,cudaSetDevice
@@ -16,6 +20,9 @@ module mod_initmpi
   use mod_common_cudecomp, only: cudecomp_real_rp, &
                                  ch => handle,gd => gd_halo,gd_poi, &
                                  ap_x,ap_y,ap_z,ap_x_poi,ap_y_poi,ap_z_poi
+#if defined(_PARTICLE)
+  use mod_common_cudecomp, only: gd_halo_wide
+#endif
   use mod_param, only: cudecomp_t_comm_backend     ,cudecomp_h_comm_backend    , &
                        cudecomp_is_t_comm_autotune ,cudecomp_is_h_comm_autotune, &
                        cudecomp_is_t_enable_nccl   ,cudecomp_is_h_enable_nccl  , &
@@ -111,6 +118,30 @@ module mod_initmpi
       atune_conf%disable_nvshmem_backends = .true.
     end if
     istat = cudecompGridDescCreate(ch,gd,conf,atune_conf)
+#if defined(_PARTICLE)
+    !
+    ! setup descriptor FOR VARIABLE SIZE HALO
+    !
+    istat = cudecompGridDescConfigSetDefaults(conf)
+    conf%gdims(:) = ng(:)
+    conf%pdims(:) = dims(:)
+    conf%halo_comm_backend = cudecomp_h_comm_backend
+    conf%transpose_axis_contiguous(:) = .false.
+    istat = cudecompGridDescAutotuneOptionsSetDefaults(atune_conf)
+    atune_conf%halo_extents(:) = nh_wide
+    atune_conf%halo_periods(:) = periods(:)
+    atune_conf%dtype = cudecomp_real_rp
+    atune_conf%autotune_halo_backend = cudecomp_is_h_comm_autotune
+    atune_conf%disable_nccl_backends    = .not.cudecomp_is_t_enable_nccl
+    atune_conf%disable_nvshmem_backends = .not.cudecomp_is_t_enable_nvshmem
+    if(all(conf_poi%transpose_comm_backend /= [CUDECOMP_TRANSPOSE_COMM_NVSHMEM,CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL])) then
+      !
+      ! disable NVSHMEM halo backend autotuning when NVSHMEM is NOT used for transposes
+      !
+      atune_conf%disable_nvshmem_backends = .true.
+    end if
+    istat = cudecompGridDescCreate(ch,gd_halo_wide,conf,atune_conf)
+#endif
 #endif
     call decomp_2d_init(ng(1),ng(2),ng(3),dims(1),dims(2),periods)
 #if !defined(_DECOMP_Y) && !defined(_DECOMP_Z)
@@ -181,6 +212,11 @@ module mod_initmpi
     do l=1,3
       call makehalo(l,1,n(:),halo(l))
     end do
+#if defined(_PARTICLE)
+    do l=1,3
+      call makehalo(l,nh_wide,n(:),halo_wide(l))
+    enddo
+#endif
     nb(:,ipencil) = MPI_PROC_NULL
     call MPI_CART_SHIFT(comm_cart,0,1,nb(0,ipencil_t(1)),nb(1,ipencil_t(1)),ierr)
     call MPI_CART_SHIFT(comm_cart,1,1,nb(0,ipencil_t(2)),nb(1,ipencil_t(2)),ierr)

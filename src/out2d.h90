@@ -41,6 +41,18 @@
   call write_visu_2d(datadir,'psi_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Psi', &
                      2,ng(2)/2,ng,time,istep, &
                      psi(1:n(1),1:n(2),1:n(3)))
+!  call write_visu_2d(datadir,'fx_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Fx', &
+!                     2,ng(2)/2,ng,time,istep, &
+!                     fx_old(1:n(1),1:n(2),1:n(3)))
+!  call write_visu_2d(datadir,'fy_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Fy', &
+!                     2,ng(2)/2,ng,time,istep, &
+!                     fy_old(1:n(1),1:n(2),1:n(3)))
+!  call write_visu_2d(datadir,'fz_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Fz', &
+!                     2,ng(2)/2,ng,time,istep, &
+!                     fz_old(1:n(1),1:n(2),1:n(3)))
+  call write_visu_2d(datadir,'alx_slice_fld'//fldnum//'.bin','log_visu_2d_slice_1.out','Alpha_C', &
+                     2,ng(2)/2,ng,time,istep, &
+                     alphac(1:n(1),1:n(2),1:n(3)))
 #if defined(_SCALAR)
   call write_visu_2d(datadir,'sca_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Temperature', &
                      2,ng(2)/2,ng,time,istep, &

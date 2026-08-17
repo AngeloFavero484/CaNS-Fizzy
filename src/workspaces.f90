@@ -24,6 +24,10 @@ contains
     use mod_param          , only: cudecomp_is_t_in_place,cbcpre
     use cudecomp
     use openacc
+#if defined(_PARTICLE)
+    use mod_common_cudecomp, only: gd_halo_wide
+    use mod_param          , only: nh_wide
+#endif
     implicit none
     integer :: istat
     integer(i8) :: wsize,max_wsize
@@ -47,7 +51,11 @@ contains
     ! (needs to be different due to the possible need of an NVSHMEM allocator
     !  in one of the descriptors, rather than a simple cudaMaloc)
     !
+#if !defined(_PARTICLE)
     nh(:) = 1
+#else
+    nh(:) = nh_wide
+#endif
     istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nh,max_wsize)
     allocate(work_halo(max_wsize))
     !

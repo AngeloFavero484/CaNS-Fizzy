@@ -124,6 +124,14 @@ ifeq ($(strip $(MASK_DIVERGENCE_CHECK)),1)
 DEFINES += -D_MASK_DIVERGENCE_CHECK
 endif
 
+ifeq ($(strip $(PARTICLE)),1) # Activate particle modules
+DEFINES += -D_PARTICLE
+endif
+
+ifeq ($(strip $(EULER)),1) # Activate eulerian particle modules
+DEFINES += -D_EULER
+endif
+
 ifeq ($(strip $(SCALAR)),1)
 DEFINES += -D_SCALAR
 endif

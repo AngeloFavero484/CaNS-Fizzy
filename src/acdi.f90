@@ -78,7 +78,7 @@ module mod_acdi
     real(rp), intent(out  ), dimension(0:,0:,0:), optional :: flux_x,flux_y,flux_z
     integer :: i,j,k
     real(rp) :: dxi,dyi
-    real(rp) :: adv,diff,sharp,rglr
+    real(rp) :: adv,rglr
     real(rp) :: upsiip,upsiim,vpsijp,vpsijm,wpsikp,wpsikm
     real(rp) :: dpsidxp,dpsidxm,dpsidyp,dpsidym,dpsidzp,dpsidzm
     real(rp) :: sharpxp,sharpxm,sharpyp,sharpym,sharpzp,sharpzm
@@ -183,6 +183,13 @@ module mod_acdi
           sharpzm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_ccm)/seps))**2)*rn_03)
           sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
           !
+          ! CDI
+!          sharpxm = gam*0.5*(psi_ccc+psi_mcc)*(1-0.5*(psi_ccc+psi_mcc))*rn_01
+!          sharpxp = gam*0.5*(psi_pcc+psi_ccc)*(1-0.5*(psi_pcc+psi_ccc))*rn_11
+!          sharpym = gam*0.5*(psi_ccc+psi_cmc)*(1-0.5*(psi_ccc+psi_cmc))*rn_02
+!          sharpyp = gam*0.5*(psi_cpc+psi_ccc)*(1-0.5*(psi_cpc+psi_ccc))*rn_12
+!          sharpzm = gam*0.5*(psi_ccc+psi_ccm)*(1-0.5*(psi_ccc+psi_ccm))*rn_03
+!          sharpzp = gam*0.5*(psi_ccp+psi_ccc)*(1-0.5*(psi_ccp+psi_ccc))*rn_13
           ! transport
           !
           rglrxm = dpsidxm - sharpxm

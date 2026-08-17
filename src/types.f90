@@ -6,14 +6,23 @@
 ! -
 module mod_types
   use mpi, only: MPI_REAL,MPI_DOUBLE_PRECISION
+#if defined(_PARTICLE)
+  use mpi, only: MPI_2REAL,MPI_2DOUBLE_PRECISION
+#endif
   integer, parameter, public :: sp = selected_real_kind(6 , 37), &
                                 dp = selected_real_kind(15,307), &
                                 i8 = selected_int_kind(18)
 #if defined(_SINGLE_PRECISION)
   integer, parameter, public :: rp = sp
   integer, parameter, public :: MPI_REAL_RP = MPI_REAL
+#if defined(_PARTICLE)
+  integer, parameter, public :: MPI_2REAL_RP = MPI_2REAL
+#endif
 #else
   integer, parameter, public :: rp = dp
   integer, parameter, public :: MPI_REAL_RP = MPI_DOUBLE_PRECISION
+#if defined(_PARTICLE)
+  integer, parameter, public :: MPI_2REAL_RP = MPI_2DOUBLE_PRECISION
+#endif
 #endif
 end module mod_types

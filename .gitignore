@@ -17,3 +17,8 @@ run/
 src/data/*.*
 run/data/*.*
 !src/data/readme.txt
+src/poslfp/distrlfp_shell
+src/poslfp/data/
+PostPrt/PrtPos/prt_post
+PostPrt/PrtPos/param.dat
+PostPrt/SphereData/data/

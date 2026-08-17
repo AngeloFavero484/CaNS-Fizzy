@@ -183,6 +183,7 @@ module mod_rk
 #if !defined(_INTERFACE_CAPTURING_VOF)
     use mod_acdi        , only: acdi_transport_pf
 #else
+!    use mod_vof_thinc_qq, only: vof_thinc_transport_psi_gauss
     use mod_vof_thinc_qq, only: vof_thinc_transport_psi
 #endif
     use mod_two_fluid   , only: clip_field
@@ -204,8 +205,10 @@ module mod_rk
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12
+    real(rp) :: vofmin
     integer :: i,j,k
     !
+    vofmin=1e-10
     factor1  = rkpar(1)*dt
     factor2  = rkpar(2)*dt
     factor12 = factor1 + factor2 ! unused but left here in case a source term is needed in the future
@@ -218,6 +221,7 @@ module mod_rk
 #if !defined(_INTERFACE_CAPTURING_VOF)
     call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
 #else
+!    call vof_thinc_transport_psi_gauss(n,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
     call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
 #endif
     if(is_first) then

@@ -16,9 +16,11 @@ module mod_vof_thinc_qq
   !
   use mpi
   use mod_types
-  use mod_param, only: eps
+  use mod_param,      only: eps
+  use prt_mod_common, only: alphac
   implicit none
   private
+!  public vof_thinc_transport_psi_gauss
   public vof_thinc_transport_psi
   !
   ! constants relate to Gaussian quadrature
@@ -53,12 +55,10 @@ module mod_vof_thinc_qq
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
     real(rp), intent(out  ), dimension(0:,0:,0:) :: flux_x,flux_y,flux_z
-    integer  :: i,j,k,ii,jj,kk,q1,q2
+    integer  :: i,j,k,ii,jj,kk
     real(rp) :: xx,yy,zz
     real(rp) :: vel_x,vel_y,vel_z,lpsi_x,lpsi_y,lpsi_z, &
-                lnormx_x,lnormx_y,lnormx_z, &
-                lnormy_x,lnormy_y,lnormy_z, &
-                lnormz_x,lnormz_y,lnormz_z, &
+                lnormx_x,lnormy_y,lnormz_z, &
                 d_x,d_y,d_z,lflux_x,lflux_y,lflux_z
     !
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -105,6 +105,7 @@ module mod_vof_thinc_qq
           lflux_x = 1._rp/(1._rp + exp(-2._rp*beta*(lnormx_x*xx + d_x)))
           lflux_y = 1._rp/(1._rp + exp(-2._rp*beta*(lnormy_y*yy + d_y)))
           lflux_z = 1._rp/(1._rp + exp(-2._rp*beta*(lnormz_z*zz + d_z)))
+          !
           flux_x(i,j,k) = vel_x*lflux_x
           flux_y(i,j,k) = vel_y*lflux_y
           flux_z(i,j,k) = vel_z*lflux_z

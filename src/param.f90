@@ -23,6 +23,10 @@ character(len=100), parameter :: datadir = 'data/'
 real(rp), parameter, dimension(2,3) :: rkcoeff = reshape([32._rp/60._rp,  0._rp        , &
                                                           25._rp/60._rp, -17._rp/60._rp, &
                                                           45._rp/60._rp, -25._rp/60._rp], shape(rkcoeff))
+#if defined(_PARTICLE)
+integer, parameter :: nh_wide = 1
+logical :: is_ibm
+#endif
 !
 ! variables to be determined from the input file
 !
@@ -66,6 +70,7 @@ real(rp), protected, dimension(3) :: dl,dli
 ! two-fluid input parameters
 !
 character(len=100), protected     :: inipsi
+real(rp), protected               :: theta
 real(rp), protected               :: sigma
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
@@ -111,7 +116,7 @@ contains
     namelist /two_fluid/ &
                   inipsi, &
                   cbcpsi,cbcnor,bcnor,bcpsi, &
-                  sigma,rho12,mu12, &
+                  theta,sigma,rho12,mu12, &
                   ka12,cp12,beta12, &
                   psi_thickness_factor
 #if defined(_OPENACC)
@@ -143,7 +148,7 @@ contains
     !
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
-    sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
+    theta = 2. * atan(1.); sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     psi_thickness_factor = 0.51; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12
 #if defined(_INTERFACE_CAPTURING_VOF)

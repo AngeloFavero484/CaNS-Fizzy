@@ -59,12 +59,14 @@ program cans
                                  dims, &
                                  gtype,gr, &
                                  bforce,ssource, &
-                                 ng,l,dl,dli, &
+                                 ng,l,dl,dli,pi, &
                                  read_input, &
-                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
+                                 rho0,rho12,mu12,theta,sigma,gacc,ka12,cp12,beta12, &
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
                                  vof_thinc_beta
+  use mod_rotnorm        , only: rot_norm
+  use mod_extend         , only: compute_uextend, advect_vof_upwind
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
@@ -87,11 +89,40 @@ program cans
   use mod_utils          , only: bulk_mean_12_stag
   !@acc use mod_utils    , only: device_memory_footprint
   use mod_types
+#if defined(_PARTICLE)
+  use mod_param                    , only: is_ibm !,nh_wide
+  use prt_mod_kernel               , only: kerneltest
+#if !defined(_EULER)
+  use prt_mod_common               , only: prt_InitMemo,uf,vf,wf,solidity
+#else
+  use prt_mod_common               , only: prt_InitMemo,uphase,vphase,wphase,solidity,alphac
+#endif
+  use prt_mod_initparticles        , only: initparticles
+  use prt_mod_initeul              , only: initeul
+  use prt_mod_initvof              , only: initvof
+  use prt_mod_param                , only: radius,rho_s
+  use prt_mod_coordsfp             , only: coordsfp
+  use prt_mod_intgr_over_sphere    , only: intgr_over_sphere
+#if !defined(_EULER)
+  use prt_mod_interp_spread        , only: eulr2lagr,lagr2eulr
+  use prt_mod_forcing              , only: complagrforces,updtlagrforces
+#else
+  use prt_mod_eulint               , only: eulint
+#endif
+  use prt_mod_phase_indicator      , only: phase_indicator
+  use prt_mod_output               , only: outpart
+  use prt_mod_loadpart             , only: loadpart
+  use prt_mod_intgr_nwtn_eulr      , only: intgr_nwtn_eulr
+#endif
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
   real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,pp,pn,po
+  real(rp), allocatable, dimension(:,:,:) :: u_ext,v_ext,w_ext
   real(rp), dimension(3) :: rho_av
   logical , dimension(3) :: is_cmpt_rho_av
+  real(rp) :: rho_ratio,mu_ratio,Ga,Ar,Mo,Eo,Oh,radius_sphere,cap_length, dt_cap
+  real(rp), dimension(3) :: Fs,Fstot,Fstot_old
+  real(rp)  :: F_ibm,F_inertia,F_w,F_buoy,F_cap
 #if !defined(_OPENACC)
   type(C_PTR), dimension(2,2) :: arrplanp
 #else
@@ -106,10 +137,12 @@ program cans
     real(rp), allocatable, dimension(:,:,:) :: z
   end type rhs_bound
   type(rhs_bound) :: rhsbp
-  real(rp) :: alpha
   real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrki,time,divtot,divmax
   real(rp) :: gam,seps
+  real(rp) :: mass,mass_tot
   integer :: irk,istep
+  real(rp) :: dtau
+  integer :: iter, max_pseudo_iter
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
@@ -124,19 +157,24 @@ program cans
   integer  :: savecounter
   character(len=7  ) :: fldnum
   character(len=4  ) :: chkptnum
-  character(len=100) :: filename,fexts(6)
+  character(len=100) :: filename,fexts(10)
   integer :: k,kk
+  integer :: i,j
   logical :: is_done,kill
   real(rp), dimension(2) :: tm_coeff
   !
-  ! scalar field
+  integer, parameter :: csv_unit = 5555
   !
   real(rp), allocatable, dimension(:,:,:) :: s
   !
   ! two-fluid solver specific
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,psio,phi,kappa,normx,normy,normz, &
-                                             psiflx_x,psiflx_y,psiflx_z
+                                             psiflx_x,psiflx_y,psiflx_z,fx_old,fy_old,fz_old
+  !
+  open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
+  write(csv_unit, '(A)') "F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
+  flush(csv_unit)
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -153,9 +191,17 @@ program cans
   !
   ! allocate variables
   !
+#if defined(_PARTICLE)
+  is_ibm = .false.
+  !
+  call prt_InitMemo(n,lo)
+#endif
   allocate(u( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            v( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            w( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+           u_ext( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+           v_ext( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+           w_ext( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            p( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            pp(0:n(1)+1,0:n(2)+1,0:n(3)+1))
 #if !defined(_CONSTANT_COEFFS_POISSON)
@@ -192,6 +238,10 @@ program cans
            rhsbp%z(n(1),n(2),0:1))
   allocate(psi,kappa,normx,normy,normz,mold=pp)
   allocate(psio,mold=pp)
+  allocate(fx_old,fy_old,fz_old,mold=pp)
+  Fs(:) = 0._rp
+  Fstot(:) = 0._rp
+  Fstot_old(:) = 0._rp
 #if !defined(_INTERFACE_CAPTURING_VOF)
   allocate(phi,mold=pp)
 #endif
@@ -207,6 +257,37 @@ program cans
   end block
   if(myid == 0) print*, ''
 #endif
+!Dimensionless parameters
+if (myid == 0) then
+!radius_sphere=0.15
+radius_sphere=radius
+rho_ratio=rho12(2)/rho12(1)
+mu_ratio=mu12(2)/mu12(1)
+Eo=(abs(rho12(1)-rho12(2))*max(abs(gacc(1)),abs(gacc(2)),abs(gacc(3)))*((2*radius_sphere)**2))/sigma
+!Goccia
+Ga=(rho12(1)*abs(rho12(1)-rho12(2))*radius_sphere*max(abs(gacc(1)),abs(gacc(2)),abs(gacc(3))))/(mu12(1)**2)
+!Bolla
+!Ga=(rho12(2)*abs(rho12(1)-rho12(2))*radius_sphere*max(abs(gacc(1)),abs(gacc(2)),abs(gacc(3))))/(mu12(2)**2)
+Ar=sqrt(Ga)
+Oh = mu12(1)/sqrt(2*radius_sphere*sigma*rho12(1))
+Mo=(Eo**3)/(Ar**2)
+cap_length = sqrt(sigma/(rho12(1)*max(abs(gacc(1)),abs(gacc(2)),abs(gacc(3)))))
+
+dt_cap = sqrt(((rho12(1)+rho12(2))*dl(1)*dl(2)*dl(3))/(4*pi*sigma))
+
+PRINT *, "Dimensionless parameters"
+PRINT *, "Bubble initial radius", radius_sphere
+PRINT *, "rho_ratio", rho_ratio 
+PRINT *, "mu_ratio", mu_ratio 
+PRINT *, "Ar", Ar
+PRINT *, "Eo", Eo 
+PRINT *, "Oh", Oh
+PRINT *, "Mo", Mo
+PRINT *, "Capillary length", cap_length
+PRINT *, "Capillary max Dt", dt_cap
+
+endif
+
   if(myid == 0) print*, '*******************************'
   if(myid == 0) print*, '*** Beginning of simulation ***'
   if(myid == 0) print*, '*******************************'
@@ -290,26 +371,64 @@ program cans
   fexts(3) = 'w'
   fexts(4) = 'p'
   fexts(5) = 'psi'
+  fexts(6) = 'fx_old'
+  fexts(7) = 'fy_old'
+  fexts(8) = 'fz_old'
+#if defined(_PARTICLE)
+  fexts(9) = 'alphac'
+#endif
+!  fexts(6) = 'normx'
+!  fexts(7) = 'normy'
+!  fexts(8) = 'normz'
+!  fexts(9) = 'kappa'
 #if defined(_SCALAR)
-  fexts(6) = 's'
+  fexts(10) = 's'
 #endif
   if(.not.restart) then
     istep = 0
     time = 0.
+    fx_old(:,:,:) = 0._rp
+    fy_old(:,:,:) = 0._rp
+    fz_old(:,:,:) = 0._rp
     call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
+#if defined(_PARTICLE)
+    if(myid == 0) print*, '*** Particle initialization  ***'
+    !
+#if !defined(_EULER)
+    if (myid == 0) then
+      call kerneltest(sumk)
+      write(6,*) 'Integral over kernel = ', sumk, ' (~ 1)'
+    endif
+#endif
+    call initparticles
+    call initeul(n)
+    if(myid == 0) print*, '*** Particle initial condition succesfully set  ***'
+    if(myid == 0) print*, ''
+#endif
+    !
     call init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
+#if defined(_PARTICLE)
+    call loadpart('r')
+#endif
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,fx_old,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(7))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,fy_old,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(8))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,fz_old,time,istep)
+!    call load_one('r',trim(datadir)//'fld_'//trim(fexts(9))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,kappa,time,istep)
+#if defined(_PARTICLE)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(9))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,alphac,time,istep)
+#endif
 #if defined(_SCALAR)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(10))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
@@ -317,6 +436,11 @@ program cans
   !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+#if defined(_PARTICLE)
+#if defined(_EULER)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,alphac)
+#endif
+#endif
 #if defined(_CONSTANT_COEFFS_POISSON)
   !$acc kernels default(present) async(1)
   pn(:,:,:) =  p(:,:,:)
@@ -339,10 +463,32 @@ program cans
 #else
   call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+  call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+  
+  dtau = 0.3_rp * minval(dli(1:3))
+  max_pseudo_iter = 5
+  do iter = 1, max_pseudo_iter
+    u_ext=0
+    v_ext=0
+    w_ext=0
+    call compute_uextend(n, theta, normx, normy, normz, u_ext, v_ext, w_ext)
+    call advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+    call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+    call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+    call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+    call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+  end do
+  call rot_norm(n,dli,dzci,psi,theta,is_bound,normx,normy,normz,kappa,Fs)
+  Fstot_old=Fstot
+  call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
+  if (myid==0) then
+    PRINT *, "Fstot", Fstot
+  end if
   !
 #if !defined(_INTERFACE_CAPTURING_VOF)
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
@@ -363,7 +509,22 @@ program cans
   end if
   if(iout3d > 0.and.mod(istep,max(iout3d,1)) == 0) then
 #include "out3d.h90"
+#if defined(_PARTICLE)
+    include 'prt_out.h90'
+#endif
   end if
+#if defined(_PARTICLE)
+  !$acc enter data create(uf,vf,wf)
+  if (myid .eq. 0) write(6,*) 'Solid volume fraction of particles = ',solidity
+  !
+  call coordsfp(n)
+  !
+  if(.not.restart) then
+    call intgr_over_sphere(1,n,psi,u,v,w)
+    call intgr_over_sphere(2,n,psi,u,v,w)
+    call intgr_over_sphere(3,n,psi,u,v,w)
+  endif
+#endif
   !
   call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
   dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
@@ -372,6 +533,15 @@ program cans
   dti = 1./dt
   kill = .false.
   !
+!  mass=0
+!  do k=1,n(3)
+!    do j=1,n(2)
+!      do i=1,n(1)
+!        mass = mass + psi(i,j,k) !(rho12(1)*psi(i,j,k)+rho12(2)*(1-psi(i,j,k)))*dl(1)*dl(2)*dl(3)
+!      end do
+!    end do
+!  end do
+!  PRINT *, "Mass", mass
   ! main loop
   !
   if(myid == 0) print*, '*** Calculation loop starts now ***'
@@ -384,9 +554,15 @@ program cans
     istep = istep + 1
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
-    do irk=1,3
-      tm_coeff(:) = rkcoeff(:,irk)
-      dtrk = sum(rkcoeff(:,1:irk))*dt
+! Runge-Kutta
+!    do irk=1,3
+!      tm_coeff(:) = rkcoeff(:,irk)
+!      dtrk = sum(rkcoeff(:,irk))*dt
+!Adams-Bashfort
+    do irk=1,1
+      tm_coeff(:) = [2._rp+dt/dto,-dt/dto]/2._rp
+      dtrk = dt
+      !
       dtrki = dtrk**(-1)
       dt_r = dtrk/dto
       !
@@ -396,7 +572,13 @@ program cans
       psio(:,:,:)   = psi(:,:,:)
       !$acc end kernels
       if(is_track_interface) then
-        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
+        uphase(1:n(1),1:n(2),1:n(3)) = u(1:n(1),1:n(2),1:n(3))
+        vphase(1:n(1),1:n(2),1:n(3)) = v(1:n(1),1:n(2),1:n(3))
+        wphase(1:n(1),1:n(2),1:n(3)) = w(1:n(1),1:n(2),1:n(3))
+        call initvof(n,u,v,w,uphase,vphase,wphase)
+        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,uphase,vphase,wphase)
+        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,uphase,vphase,wphase, &
+        normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
 #if !defined(_INTERFACE_CAPTURING_VOF)
@@ -405,10 +587,35 @@ program cans
 #else
         call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-        call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
         call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+        call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+        !
+        dtau = 0.3_rp * minval(dli(1:3))
+        max_pseudo_iter = 5
+        !
+        call initeul(n)
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,alphac)
+        do iter = 1, max_pseudo_iter
+          u_ext=0
+          v_ext=0
+          w_ext=0
+          call compute_uextend(n, theta, normx, normy, normz, u_ext, v_ext, w_ext)
+          call advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi)
+          call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+          call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+          call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+          call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+          call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+          call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+        end do
+        call rot_norm(n,dli,dzci,psi,theta,is_bound,normx,normy,normz,kappa,Fs)
+        Fstot_old=Fstot
+        call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
+        if (myid==0) then
+          PRINT *, "Fstot", Fstot
+        end if
       else
         !$acc kernels default(present) async(1)
         psiflx_x(:,:,:) = 0.
@@ -434,28 +641,85 @@ program cans
           call bulk_mean_12_stag(n,2,grid_vol_ratio_c,psi,rho12,rho_av(2))
         if(is_cmpt_rho_av(3)) &
           call bulk_mean_12_stag(n,3,grid_vol_ratio_f,psi,rho12,rho_av(3))
+        !
         call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
                 psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
+        !
         if(is_forced_hit) then
           call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
         end if
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-        !$acc kernels default(present) async(1)
-        pp(:,:,:) = p(:,:,:)
-        !$acc end kernels
-        call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
-#if defined(_CONSTANT_COEFFS_POISSON)
-        call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
-        call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
-#else
-        call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+#if defined(_PARTICLE)
+      !
+      !$acc wait
+      !$acc update self(u,v,w)
+      is_ibm = .true.
+      !
+#if !defined(_EULER)
+      ibmiter = 0
+      !
+      !$acc kernels default(present) async(1)
+      uf(1:n(1),1:n(2),1:n(3)) = u(1:n(1),1:n(2),1:n(3))
+      vf(1:n(1),1:n(2),1:n(3)) = v(1:n(1),1:n(2),1:n(3))
+      wf(1:n(1),1:n(2),1:n(3)) = w(1:n(1),1:n(2),1:n(3))
 #endif
-        call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-        call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
-        call updatep(pp,p)
-        call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      !$acc end kernels
+      !
+#if !defined(_EULER)
+!      do while(ibmiter <= 2)
+!      !  call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,uf,vf,wf)
+!        !$acc wait
+!        !$acc update self(uf,vf,wf)
+!        call eulr2lagr(n,lo,uf,vf,wf)
+!        !
+!        if (ibmiter == 0) then
+!          call complagrforces(dtrki,irk)
+!        else
+!          call updtlagrforces(dtrki,dti,ibmiter)
+!        endif
+!        !
+!        call lagr2eulr(dtrk,n,lo,u,v,w,uf,vf,wf)
+!        !
+!        !$acc update device(uf,vf,wf)
+!        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,uf,vf,wf)
+!        ibmiter = ibmiter+1
+!      enddo
+#else
+      call eulint(tm_coeff,dt,irk,n,psi,psio,kappa,fx_old,fy_old,fz_old,u,v,w)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,alphac)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+#endif
+      !
+#if !defined(_EULER)
+      !$acc kernels default(present) async(1)
+      u(1:n(1),1:n(2),1:n(3)) = uf(1:n(1),1:n(2),1:n(3))
+      v(1:n(1),1:n(2),1:n(3)) = vf(1:n(1),1:n(2),1:n(3))
+      w(1:n(1),1:n(2),1:n(3)) = wf(1:n(1),1:n(2),1:n(3))
+      !$acc end kernels
+#endif
+      !
+      is_ibm = .false.
+      !
+#endif
+      !$acc kernels default(present) async(1)
+      pp(:,:,:) = p(:,:,:)
+      !$acc end kernels
+      call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
+#if defined(_CONSTANT_COEFFS_POISSON)
+      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
+      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
+#else
+      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+#endif
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
+      call updatep(pp,p)
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+#if defined(_PARTICLE)
+      call intgr_nwtn_eulr(n,l,dl,dli,dt,tm_coeff,istep,psi,u,v,w,Fstot,Fstot_old,F_ibm,F_inertia,F_w,F_buoy,F_cap)
+#endif
       end if
     end do
 #if defined(_CONSTANT_COEFFS_POISSON)
@@ -478,6 +742,19 @@ program cans
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     dto = dt
+!  mass=0
+!  do k=1,n(3)
+!    do j=1,n(2)
+!      do i=1,n(1)
+!        mass = mass + rho12(1)*psi(i,j,k)*(1-alphac(i,j,k)) + rho12(2)*(1-psi(i,j,k))*(1-alphac(i,j,k)) + &
+!               rho_s*alphac(i,j,k) !(rho12(1)*psi(i,j,k)+rho12(2)*(1-psi(i,j,k)))*dl(1)*dl(2)*dl(3)
+!      end do
+!    end do
+!  end do
+!  call MPI_ALLREDUCE(mass, mass_tot, 1, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
+!  if (myid==0) then 
+!    PRINT *, "Mass", mass_tot
+!  end if
 #if !defined(_INTERFACE_CAPTURING_VOF)
     if(mod(istep,1) == 0) then
       call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
@@ -540,6 +817,9 @@ program cans
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out3d.h90"
+#if defined(_PARTICLE)
+      include 'prt_out.h90'
+#endif
     end if
     if(isave > 0.and.((mod(istep,max(isave,1)) == 0).or.(is_done.and..not.kill))) then
       if(is_overwrite_save) then
@@ -559,19 +839,29 @@ program cans
       end if
       !$acc wait
       !$acc update self(u,v,w,p,psi,s)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,fx_old,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(7))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,fy_old,time,istep)
+   call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(8))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,fz_old,time,istep)
+#if defined(_PARTICLE)
+    call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(9))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,alphac,time,istep)
+#endif
+!      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(9))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,kappa,time,istep)
 #if defined(_SCALAR)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(10))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+#endif
+#if defined(_PARTICLE)
+      call loadpart('w')
 #endif
       if(.not.is_overwrite_save) then
         !
         ! fld_?.bin -> last checkpoint file (symbolic link)
         !
-        do k = 1,5
+        do k = 1,9
           call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin')
         end do
 #if defined(_SCALAR)
@@ -595,6 +885,7 @@ program cans
   !
   call fftend(arrplanp)
   if(myid == 0.and.(.not.kill)) print*, '*** Fim ***'
+  if(myid == 0) close(csv_unit)
   call decomp_2d_finalize
   call MPI_FINALIZE(ierr)
 end program cans

@@ -47,8 +47,8 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_param          , only: rkcoeff,small, &
-                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor, &
+  use mod_param          , only: small, &
+                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
@@ -72,6 +72,8 @@ program cans
 #endif
 #if !defined(_INTERFACE_CAPTURING_VOF)
   use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
+#elif defined(_SDF_NORMALS)
+  use mod_vof_thinc_qq   , only: vof_thinc_cmpt_phi
 #endif
   use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs
 #if !defined(_CONSTANT_COEFFS_POISSON)
@@ -171,6 +173,10 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z,fx_old,fy_old,fz_old
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+  real(rp), allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                             surfx_o,surfy_o,surfz_o
+#endif
   !
   open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
   write(csv_unit, '(A)') "F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
@@ -242,10 +248,20 @@ program cans
   Fs(:) = 0._rp
   Fstot(:) = 0._rp
   Fstot_old(:) = 0._rp
-#if !defined(_INTERFACE_CAPTURING_VOF)
+#if defined(_SDF_NORMALS)
   allocate(phi,mold=pp)
 #endif
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+  allocate(surfx_n(n(1),n(2),n(3)),surfy_n(n(1),n(2),n(3)),surfz_n(n(1),n(2),n(3)), &
+           surfx_o(n(1),n(2),n(3)),surfy_o(n(1),n(2),n(3)),surfz_o(n(1),n(2),n(3)))
+  surfx_n(:,:,:) = 0._rp
+  surfy_n(:,:,:) = 0._rp
+  surfz_n(:,:,:) = 0._rp
+  surfx_o(:,:,:) = 0._rp
+  surfy_o(:,:,:) = 0._rp
+  surfz_o(:,:,:) = 0._rp
+#endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -433,6 +449,9 @@ endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
   !$acc enter data copyin(u,v,w,p,pp,pn,po) async
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+  !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o) async
+#endif
   !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
@@ -452,22 +471,31 @@ endif
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
   !$acc wait
 #endif
-  !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz) async(1)
+  !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
+#if defined(_SDF_NORMALS)
+  !$acc enter data create(phi) async(1)
+#endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !$acc wait
   !
+#if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
   call acdi_cmpt_phi(n,seps,psi,phi)
+#else
+  call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+#endif
+#endif
+#if defined(_SDF_NORMALS)
   call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
 #else
   call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
+  call boundp(cbccur,n,bccur,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
-  call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-  
+
   dtau = 0.3_rp * minval(dli(1:3))
   max_pseudo_iter = 5
   do iter = 1, max_pseudo_iter
@@ -527,7 +555,14 @@ endif
 #endif
   !
   call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
-  dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
+  dt = min(cfl*dt_cfl,dtmax)
+  if(dt_f > 0.) then
+    if(dt_f > dt) then
+      if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
+      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+    end if
+    dt = dt_f
+  end if
   if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dto = dt
   dti = 1./dt
@@ -583,14 +618,18 @@ endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
 #if !defined(_INTERFACE_CAPTURING_VOF)
         call acdi_cmpt_phi(n,seps,psi,phi)
+#else
+        call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+#endif
+#if defined(_SDF_NORMALS)
         call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
 #else
         call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
+        call boundp(cbccur,n,bccur,nb,is_bound,dl,dzc,kappa)
         call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
         call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
-        call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         !
         dtau = 0.3_rp * minval(dli(1:3))
         max_pseudo_iter = 5
@@ -624,8 +663,8 @@ endif
         !$acc end kernels
       end if
 #if defined(_SCALAR)
-      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
-      call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
+    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
+    call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
       if(.not.is_solve_ns) then
         call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
@@ -644,6 +683,9 @@ endif
         !
         call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+                surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
                 psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
         !
         if(is_forced_hit) then
@@ -763,8 +805,18 @@ endif
 #endif
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps)
-      dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+      dt = min(cfl*dt_cfl,dtmax)
+      if(dt_f > 0.) then
+        if(dt_f > dt) then
+          if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
+          if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+          is_done = .true.
+          kill = .true.
+        else
+          dt = dt_f
+        end if
+      end if
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
       if(dt_cfl < small) then
         if(myid == 0) print*, 'ERROR: time step is too small.'

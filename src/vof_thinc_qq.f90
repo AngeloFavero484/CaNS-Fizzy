@@ -21,7 +21,7 @@ module mod_vof_thinc_qq
   implicit none
   private
 !  public vof_thinc_transport_psi_gauss
-  public vof_thinc_transport_psi
+  public vof_thinc_transport_psi,vof_thinc_cmpt_phi
   !
   ! constants relate to Gaussian quadrature
   !
@@ -38,7 +38,7 @@ module mod_vof_thinc_qq
 #endif
   !
   contains
-  subroutine vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,psi,dpsidt,flux_x,flux_y,flux_z)
+  subroutine vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidt,flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the VoF transport equation
     !
@@ -52,12 +52,16 @@ module mod_vof_thinc_qq
     real(rp), intent(in   )                      :: beta
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: phi
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
     real(rp), intent(out  ), dimension(0:,0:,0:) :: flux_x,flux_y,flux_z
     integer  :: i,j,k,ii,jj,kk
     real(rp) :: xx,yy,zz
-    real(rp) :: vel_x,vel_y,vel_z,lpsi_x,lpsi_y,lpsi_z, &
+    real(rp) :: vel_x,vel_y,vel_z, &
+#if !defined(_SDF_NORMALS)
+                lpsi_x,lpsi_y,lpsi_z, &
+#endif
                 lnormx_x,lnormy_y,lnormz_z, &
                 d_x,d_y,d_z,lflux_x,lflux_y,lflux_z
     !
@@ -91,16 +95,22 @@ module mod_vof_thinc_qq
             zz = -0.5
           end if
           !
-          lpsi_x = psi(ii,j,k)
-          lpsi_y = psi(i,jj,k)
-          lpsi_z = psi(i,j,kk)
           lnormx_x = normx(ii,j,k)
           lnormy_y = normy(i,jj,k)
           lnormz_z = normz(i,j,kk)
           !
-          d_x = -.5_rp/beta*log(1._rp/(lpsi_x+eps)-1._rp+eps) !d_x = atanh(1._rp/lpsi_x-1._rp)
-          d_y = -.5_rp/beta*log(1._rp/(lpsi_y+eps)-1._rp+eps) !d_y = atanh(1._rp/lpsi_y-1._rp)
-          d_z = -.5_rp/beta*log(1._rp/(lpsi_z+eps)-1._rp+eps) !d_z = atanh(1._rp/lpsi_z-1._rp)
+#if defined(_SDF_NORMALS)
+          d_x = phi(ii,j,k)
+          d_y = phi(i,jj,k)
+          d_z = phi(i,j,kk)
+#else
+          lpsi_x = psi(ii,j,k)
+          lpsi_y = psi(i,jj,k)
+          lpsi_z = psi(i,j,kk)
+          d_x = -.5_rp/beta*log(1._rp/(lpsi_x+eps)-1._rp+eps)
+          d_y = -.5_rp/beta*log(1._rp/(lpsi_y+eps)-1._rp+eps)
+          d_z = -.5_rp/beta*log(1._rp/(lpsi_z+eps)-1._rp+eps)
+#endif
           !
           lflux_x = 1._rp/(1._rp + exp(-2._rp*beta*(lnormx_x*xx + d_x)))
           lflux_y = 1._rp/(1._rp + exp(-2._rp*beta*(lnormy_y*yy + d_y)))
@@ -124,6 +134,30 @@ module mod_vof_thinc_qq
       end do
     end do
   end subroutine vof_thinc_transport_psi
+  !
+  subroutine vof_thinc_cmpt_phi(n,beta,psi,phi)
+    !
+    ! compute the dimensionless signed-distance proxy implied by the
+    ! midpoint THINC reconstruction
+    !
+    implicit none
+    integer , intent(in ), dimension(3)        :: n
+    real(rp), intent(in )                      :: beta
+    real(rp), intent(in ), dimension(0:,0:,0:) :: psi
+    real(rp), intent(out), dimension(0:,0:,0:) :: phi
+    real(rp) :: psi_aux
+    integer  :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) firstprivate(beta) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          psi_aux = min(max(psi(i,j,k),eps),1._rp-eps)
+          phi(i,j,k) = 0.5_rp/beta*log(psi_aux/(1._rp-psi_aux))
+        end do
+      end do
+    end do
+  end subroutine vof_thinc_cmpt_phi
   !
   subroutine vof_thinc_transport_psi_gauss(n,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt,flux_x,flux_y,flux_z)
     !

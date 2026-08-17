@@ -20,9 +20,6 @@ real(rp), parameter :: eps = 0._rp
 #endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
 character(len=100), parameter :: datadir = 'data/'
-real(rp), parameter, dimension(2,3) :: rkcoeff = reshape([32._rp/60._rp,  0._rp        , &
-                                                          25._rp/60._rp, -17._rp/60._rp, &
-                                                          45._rp/60._rp, -25._rp/60._rp], shape(rkcoeff))
 #if defined(_PARTICLE)
 integer, parameter :: nh_wide = 1
 logical :: is_ibm
@@ -57,6 +54,8 @@ character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
 real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
+character(len=1), protected, dimension(0:1,3)   ::  cbccur
+real(rp)        , protected, dimension(0:1,3)   ::   bccur
 character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
 character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
@@ -148,6 +147,7 @@ contains
     !
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
+    cbccur(:,:) = 'P'; bccur(:,:) = 0.
     theta = 2. * atan(1.); sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     psi_thickness_factor = 0.51; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12
@@ -174,6 +174,8 @@ contains
     !
     dl(:) = l(:)/(1.*ng(:))
     dli(:) = dl(:)**(-1)
+    cbccur(:,:) = cbcpsi(:,:)
+    bccur(:,:) = bcpre(:,:)
     rho0 = 1.
 #if defined(_CONSTANT_COEFFS_POISSON)
     rho0 = minval(rho12(:))

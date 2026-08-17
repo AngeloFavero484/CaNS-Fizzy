@@ -15,9 +15,12 @@ module mod_rk
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+                surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
                 psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
     !
-    ! RK3 scheme for time integration of the momentum equations
+    ! AB2 scheme for time integration of the momentum equations
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -32,6 +35,10 @@ module mod_rk
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: p
     real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,s
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                                 surfx_o,surfy_o,surfz_o
+#endif
     real(rp), intent(in   ), dimension(0:,0:,0:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(0:,0:,0:)           :: u,v,w
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
@@ -102,7 +109,11 @@ module mod_rk
     ! pressure, surface tension, and buoyancy terms
     !
     call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                     p,psi,kappa,s,pn,po,dudtrk,dvdtrk,dwdtrk)
+                     p,psi,kappa,s,pn,po, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+                     surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
+                     dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -122,7 +133,7 @@ module mod_rk
   subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
     use mod_scal, only: scal_ad
     !
-    ! RK3 scheme for time integration of the scalar field
+    ! AB2 scheme for time integration of the scalar field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -188,7 +199,7 @@ module mod_rk
 #endif
     use mod_two_fluid   , only: clip_field
     !
-    ! RK3 scheme for time integration of the phase field
+    ! AB2 scheme for time integration of the phase field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -222,7 +233,7 @@ module mod_rk
     call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
 #else
 !    call vof_thinc_transport_psi_gauss(n,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
-    call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
+    call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
 #endif
     if(is_first) then
       !$acc kernels default(present) async(1)

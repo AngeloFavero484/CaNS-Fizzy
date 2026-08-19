@@ -96,11 +96,13 @@ module mod_extend
     integer  :: i, j, k
     real(rp) :: u, v, w
     real(rp) :: dpsidx, dpsidy, dpsidz
+    real(rp) :: alpha_min
     
+    alpha_min=0.05_rp
     do k = 1, n(3)
       do j = 1, n(2)
         do i = 1, n(1)
-          if (alphac(i,j,k) > 0.05_rp .and. alphac(i,j,k) < 1._rp) then
+          if (alphac(i,j,k) > alpha_min .and. alphac(i,j,k) < 1._rp) then
             u = u_ext(i,j,k)
             v = v_ext(i,j,k)
             w = w_ext(i,j,k)

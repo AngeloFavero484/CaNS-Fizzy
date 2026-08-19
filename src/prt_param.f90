@@ -18,11 +18,14 @@ module prt_mod_param
 !  real, parameter :: pi = acos(-1.)
 ! Width hyperbola
 #if defined(_EULER)
-    real(rp) :: eps_sol = 1.5_rp
+    real(rp), protected :: eps_sol
 #endif
   !
-  integer, parameter :: np = 1
-  integer, parameter :: nqmax = min(np+2,15) ! np+2 walls
+  integer, protected :: np
+  ! fixed compile-time cap on simultaneous collision partners+walls per particle
+  ! (sizes fixed-shape array components of type particle/particle_old in prt_common.f90,
+  ! so it cannot be derived from the runtime np; large enough for any np of practical interest)
+  integer, parameter :: nqmax = 15
 !  integer, parameter :: nfriendsmax = 80
   !
   integer, parameter :: send_real = 24+10*nqmax, &
@@ -35,11 +38,14 @@ module prt_mod_param
 !  real(rp), parameter :: gaccx = 0.0_rp, &  !gacc*cos(pi/2.), &
 !                         gaccy = 0.0_rp, &     !gacc*cos(pi/2.), &
 !                         gaccz = -9.81_rp     !gacc*sin(pi/2.)
-  real(rp), parameter :: ratiorho = 5._rp
-  real(rp), parameter :: rho_s = 1320._rp
-  real(rp), parameter :: radius = 1._rp
-  real(rp), parameter :: volp = (4._rp/3._rp)*pi*radius**3._rp
-  real(rp), parameter :: mominert = (2._rp/5._rp)*volp*radius**2._rp  !
+  !
+  ! particle physical inputs (read from input.nml, see read_particle_input below)
+  !
+  real(rp), protected :: ratiorho
+  real(rp), protected :: rho_s
+  real(rp), protected :: radius
+  real(rp), protected :: volp
+  real(rp), protected :: mominert
 !  character(len=5), parameter :: datadir = 'data/'
 !  !
 !  real, parameter, dimension(3,2) :: rkcoeff = reshape((/ 32./60., 25./60., 45./60., 0., -17./60., -25./60. /), shape(rkcoeff))
@@ -48,35 +54,16 @@ module prt_mod_param
 !  !Output parameters
 !  integer,parameter :: ioutchk = 10/1, iout1d = 50/1,iout2d = 3000 ,ioutfld = iout2d 
   !
-  ! set collision parameters
+  ! set collision parameters (read from input.nml, see read_particle_input below)
   !
-  real(rp), parameter :: Nstretch = 8.0_rp, &
-                         dt_estim = 0.003_rp, & !0.05_rp !0.003
-                         r_dtcol  = 50.0_rp, &   !=dt/dtp
-                         r_dtcoli = 1.0_rp/r_dtcol
-  real(rp), parameter :: en = 0.97_rp, &
-                         et = 0.10_rp, &
-                         muc = 0.0_rp
-  ! sphere/sphere
-  real(rp), parameter :: colthr_pp = 0._rp*radius
-  real(rp), parameter :: meffn_ss = ratiorho*volp/2._rp, &
-                         mefft_ss = 2._rp/7._rp*meffn_ss, &
-                         kn_ss = (pi**2._rp + abs(log(en))**2._rp)*meffn_ss/((Nstretch*dt_estim)**2._rp), &
-                         kt_ss = (pi**2._rp + abs(log(et))**2._rp)*mefft_ss/((Nstretch*dt_estim)**2._rp), &
-                         etan_ss = -2._rp*(log(en))*meffn_ss/(Nstretch*dt_estim), &
-                         etat_ss = -2._rp*(log(et))*mefft_ss/(Nstretch*dt_estim), &
-                         muc_ss = muc, &
-                         psi_crit_ss = 7._rp/2._rp*(1._rp+en)/(1._rp+et)*muc_ss
-  ! sphere/wall
-  real(rp), parameter :: colthr_pw = 0.001_rp*radius
-  real(rp), parameter :: meffn_sw = ratiorho*volp, &
-                         mefft_sw = 2._rp/7._rp*meffn_sw, &
-                         kn_sw = (pi**2._rp + abs(log(en))**2._rp)*meffn_sw/((Nstretch*dt_estim)**2._rp), &
-                         kt_sw = (pi**2._rp + abs(log(et))**2._rp)*mefft_sw/((Nstretch*dt_estim)**2._rp), &
-                         etan_sw = -2._rp*(log(en))*meffn_sw/(Nstretch*dt_estim), &
-                         etat_sw = -2._rp*(log(et))*mefft_sw/(Nstretch*dt_estim), &
-                         muc_sw = muc, &
-                         psi_crit_sw = 7._rp/2._rp*(1._rp+en)/(1._rp+et)*muc_sw
+  real(rp), protected :: Nstretch,dt_estim,r_dtcol,r_dtcoli
+  real(rp), protected :: en,et,muc
+  ! sphere/sphere (derived from radius/ratiorho, see read_particle_input below)
+  real(rp), protected :: colthr_pp
+  real(rp), protected :: meffn_ss,mefft_ss,kn_ss,kt_ss,etan_ss,etat_ss,muc_ss,psi_crit_ss
+  ! sphere/wall (derived from radius/ratiorho, see read_particle_input below)
+  real(rp), protected :: colthr_pw
+  real(rp), protected :: meffn_sw,mefft_sw,kn_sw,kt_sw,etan_sw,etat_sw,muc_sw,psi_crit_sw
   !
   ! set parameters for the lubrication model
   !
@@ -167,5 +154,82 @@ module prt_mod_param
        d22_sat_pw = 2._rp/5._rp*log(eps_sat_pw)+66._rp/125._rp*eps_sat_pw*log(eps_sat_pw)-0.371_rp, &
        d33_sat_pw = 2._rp/5._rp*log(eps_sat_pw)+66._rp/125._rp*eps_sat_pw*log(eps_sat_pw)-0.371_rp
   !
+  contains
+  subroutine read_particle_input(myid)
+    use mpi
+    implicit none
+    integer, intent(in) :: myid
+    integer :: iunit,ierr
+    namelist /particle/ np,radius,rho_s,ratiorho
+    namelist /collision_parameters/ Nstretch,dt_estim,r_dtcol,en,et,muc
+#if defined(_EULER)
+    namelist /particle_euler/ eps_sol
+#endif
+    !
+    ! set-up default parameters
+    !
+    np = 1
+    radius = 1._rp
+    rho_s = 1320._rp
+    ratiorho = 5._rp
+    Nstretch = 8.0_rp
+    dt_estim = 0.003_rp !0.05_rp !0.003
+    r_dtcol  = 50.0_rp   !=dt/dtp
+    en = 0.97_rp
+    et = 0.10_rp
+    muc = 0.0_rp
+#if defined(_EULER)
+    eps_sol = 1.5_rp
+#endif
+    !
+    ! read input file
+    !
+    open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
+      if( ierr == 0 ) then
+        read(iunit,nml=particle,iostat=ierr)
+        rewind(iunit)
+        read(iunit,nml=collision_parameters,iostat=ierr)
+#if defined(_EULER)
+        rewind(iunit)
+        read(iunit,nml=particle_euler,iostat=ierr)
+#endif
+      else
+        if(myid == 0) print*, 'Error reading the input file'
+        if(myid == 0) print*, 'Aborting...'
+        call MPI_FINALIZE(ierr)
+        error stop
+      end if
+    close(iunit)
+    !
+    ! derived quantities
+    !
+    r_dtcoli = 1.0_rp/r_dtcol
+    volp = (4._rp/3._rp)*pi*radius**3._rp
+    mominert = (2._rp/5._rp)*volp*radius**2._rp
+    !
+    ! sphere/sphere
+    !
+    colthr_pp = 0._rp*radius
+    meffn_ss = ratiorho*volp/2._rp
+    mefft_ss = 2._rp/7._rp*meffn_ss
+    kn_ss = (pi**2._rp + abs(log(en))**2._rp)*meffn_ss/((Nstretch*dt_estim)**2._rp)
+    kt_ss = (pi**2._rp + abs(log(et))**2._rp)*mefft_ss/((Nstretch*dt_estim)**2._rp)
+    etan_ss = -2._rp*(log(en))*meffn_ss/(Nstretch*dt_estim)
+    etat_ss = -2._rp*(log(et))*mefft_ss/(Nstretch*dt_estim)
+    muc_ss = muc
+    psi_crit_ss = 7._rp/2._rp*(1._rp+en)/(1._rp+et)*muc_ss
+    !
+    ! sphere/wall
+    !
+    colthr_pw = 0.001_rp*radius
+    meffn_sw = ratiorho*volp
+    mefft_sw = 2._rp/7._rp*meffn_sw
+    kn_sw = (pi**2._rp + abs(log(en))**2._rp)*meffn_sw/((Nstretch*dt_estim)**2._rp)
+    kt_sw = (pi**2._rp + abs(log(et))**2._rp)*mefft_sw/((Nstretch*dt_estim)**2._rp)
+    etan_sw = -2._rp*(log(en))*meffn_sw/(Nstretch*dt_estim)
+    etat_sw = -2._rp*(log(et))*mefft_sw/(Nstretch*dt_estim)
+    muc_sw = muc
+    psi_crit_sw = 7._rp/2._rp*(1._rp+en)/(1._rp+et)*muc_sw
+  end subroutine read_particle_input
 #endif
 end module prt_mod_param

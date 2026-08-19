@@ -53,3 +53,23 @@ psi_thickness_factor = 0.51
 cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
 cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
 /
+
+&particle
+np       = 1
+radius   = 1.
+rho_s    = 1320.
+ratiorho = 5.
+/
+
+&collision_parameters
+Nstretch = 8.0
+dt_estim = 0.003
+r_dtcol  = 50.0
+en       = 0.97
+et       = 0.10
+muc      = 0.0
+/
+
+&particle_euler
+eps_sol = 1.5
+/

@@ -102,7 +102,7 @@ program cans
   use prt_mod_initparticles        , only: initparticles
   use prt_mod_initeul              , only: initeul
   use prt_mod_initvof              , only: initvof
-  use prt_mod_param                , only: radius,rho_s
+  use prt_mod_param                , only: radius,rho_s,read_particle_input
   use prt_mod_coordsfp             , only: coordsfp
   use prt_mod_intgr_over_sphere    , only: intgr_over_sphere
 #if !defined(_EULER)
@@ -188,6 +188,9 @@ program cans
   ! read parameter file
   !
   call read_input(myid)
+#if defined(_PARTICLE)
+  call read_particle_input(myid)
+#endif
   !
   ! initialize MPI/OpenMP
   !

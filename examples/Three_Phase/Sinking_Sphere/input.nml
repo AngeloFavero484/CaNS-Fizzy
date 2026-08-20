@@ -62,7 +62,7 @@ rho_s    = 2000.
 ratiorho = 5.
 u_ini    = 0.
 v_ini    = 0.
-w_ini    = -28.78
+w_ini    = -26.52
 /
 
 &collision_parameters

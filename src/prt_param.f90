@@ -46,6 +46,7 @@ module prt_mod_param
   real(rp), protected :: radius
   real(rp), protected :: volp
   real(rp), protected :: mominert
+  real(rp), protected :: u_ini,v_ini,w_ini ! initial particle velocity (same for all particles)
 !  character(len=5), parameter :: datadir = 'data/'
 !  !
 !  real, parameter, dimension(3,2) :: rkcoeff = reshape((/ 32./60., 25./60., 45./60., 0., -17./60., -25./60. /), shape(rkcoeff))
@@ -160,7 +161,7 @@ module prt_mod_param
     implicit none
     integer, intent(in) :: myid
     integer :: iunit,ierr
-    namelist /particle/ np,radius,rho_s,ratiorho
+    namelist /particle/ np,radius,rho_s,ratiorho,u_ini,v_ini,w_ini
     namelist /collision_parameters/ Nstretch,dt_estim,r_dtcol,en,et,muc
 #if defined(_EULER)
     namelist /particle_euler/ eps_sol
@@ -172,6 +173,9 @@ module prt_mod_param
     radius = 1._rp
     rho_s = 1320._rp
     ratiorho = 5._rp
+    u_ini = 0.0_rp
+    v_ini = 0.0_rp
+    w_ini = -28.78_rp
     Nstretch = 8.0_rp
     dt_estim = 0.003_rp !0.05_rp !0.003
     r_dtcol  = 50.0_rp   !=dt/dtp

@@ -5,7 +5,7 @@ module prt_mod_initparticles
   use mod_types
   use mod_param       , only: datadir,ng,dims,l
   use mod_common_mpi  , only: ierr,myid,status,prt_comm_cart
-  use prt_mod_param   , only: mominert,np,radius,volp,ratiorho,rho_s
+  use prt_mod_param   , only: mominert,np,radius,volp,ratiorho,rho_s,u_ini,v_ini,w_ini
   use prt_mod_common  , only: ep,npmax,npmstr,pmax,offset,coords,neighbor
   !
   implicit none
@@ -533,9 +533,9 @@ module prt_mod_initparticles
     !  close(25) 
     !endif
     !
-    ep(1:npmax)%u = 0.0_rp
-    ep(1:npmax)%v = 0.0_rp
-    ep(1:npmax)%w = -28.78_rp
+    ep(1:npmax)%u = u_ini
+    ep(1:npmax)%v = v_ini
+    ep(1:npmax)%w = w_ini
     ep(1:npmax)%omx = 0.0_rp
     ep(1:npmax)%omy = 0.0_rp
     ep(1:npmax)%omz = 0.0_rp

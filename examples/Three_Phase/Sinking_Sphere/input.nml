@@ -60,6 +60,9 @@ np       = 1
 radius   = 1.
 rho_s    = 2000.
 ratiorho = 5.
+u_ini    = 0.
+v_ini    = 0.
+w_ini    = -28.78
 /
 
 &collision_parameters

@@ -98,7 +98,7 @@ module mod_extend
     real(rp) :: dpsidx, dpsidy, dpsidz
     real(rp) :: alpha_min
     
-    alpha_min=0.05_rp
+    alpha_min=0.5_rp
     do k = 1, n(3)
       do j = 1, n(2)
         do i = 1, n(1)

@@ -57,7 +57,8 @@ module prt_mod_param
   !
   ! set collision parameters (read from input.nml, see read_particle_input below)
   !
-  real(rp), protected :: Nstretch,dt_estim,r_dtcol,r_dtcoli
+  real(rp), protected :: Nstretch,dt_estim,r_dtcoli
+  integer,  protected :: r_dtcol
   real(rp), protected :: en,et,muc
   ! sphere/sphere (derived from radius/ratiorho, see read_particle_input below)
   real(rp), protected :: colthr_pp
@@ -178,7 +179,7 @@ module prt_mod_param
     w_ini = -28.78_rp
     Nstretch = 8.0_rp
     dt_estim = 0.003_rp !0.05_rp !0.003
-    r_dtcol  = 50.0_rp   !=dt/dtp
+    r_dtcol  = 50        !=dt/dtp (number of collision sub-steps per macro time step)
     en = 0.97_rp
     et = 0.10_rp
     muc = 0.0_rp
@@ -207,7 +208,7 @@ module prt_mod_param
     !
     ! derived quantities
     !
-    r_dtcoli = 1.0_rp/r_dtcol
+    r_dtcoli = 1.0_rp/real(r_dtcol,rp)
     volp = (4._rp/3._rp)*pi*radius**3._rp
     mominert = (2._rp/5._rp)*volp*radius**2._rp
     !

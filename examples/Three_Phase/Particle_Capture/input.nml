@@ -68,7 +68,7 @@ w_ini    = 0.
 &collision_parameters
 Nstretch = 8.0
 dt_estim = 0.003
-r_dtcol  = 50.0
+r_dtcol  = 50
 en       = 0.97
 et       = 0.10
 muc      = 0.0

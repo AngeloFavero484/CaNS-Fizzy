@@ -5,7 +5,7 @@ module prt_mod_initparticles
   use mod_types
   use mod_param       , only: datadir,ng,dims,l
   use mod_common_mpi  , only: ierr,myid,status,prt_comm_cart
-  use prt_mod_param   , only: mominert,np,radius,volp,ratiorho,rho_s,u_ini,v_ini,w_ini
+  use prt_mod_param   , only: mominert,np,radius,volp,ratiorho,rho_s,u_ini,v_ini,w_ini,x_ini,y_ini,z_ini
   use prt_mod_common  , only: ep,npmax,npmstr,pmax,offset,coords,neighbor
   !
   implicit none
@@ -76,9 +76,9 @@ module prt_mod_initparticles
           if(np == 1) then
             thetacglob(p) = 0._rp
             phicglob(p)   = 0._rp
-            xcglob(p)     = l(1)*0.5_rp
-            ycglob(p)     = l(2)*0.5_rp
-            zcglob(p)     = l(3)*0.755_rp
+            xcglob(p)     = x_ini
+            ycglob(p)     = y_ini
+            zcglob(p)     = z_ini
             PRINT *, "z", zcglob(p)
           else      
 111         continue

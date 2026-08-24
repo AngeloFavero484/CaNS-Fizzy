@@ -63,6 +63,9 @@ ratiorho = 5.
 u_ini    = 0.
 v_ini    = 0.
 w_ini    = 0.
+x_ini    = 8.0
+y_ini    = 8.0
+z_ini    = 3.6
 /
 
 &collision_parameters

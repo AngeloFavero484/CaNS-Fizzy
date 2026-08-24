@@ -370,7 +370,7 @@ module mod_collisions !VER O QUE ACONTECE SE TIVER NDT=40 E ITERMAX = 1
         c32b = c32b_sat_pp
         d11  = d11_sat_pp
         d11a = d11a_sat_pp
-        d11a = d11b_sat_pp
+        d11b = d11b_sat_pp
         d22a = d22a_sat_pp
         d22b = d22b_sat_pp
         d33a = d33a_sat_pp

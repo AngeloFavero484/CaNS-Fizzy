@@ -187,7 +187,6 @@ module prt_mod_forcing
         ep(p)%fyltot    = auxv
         ep(p)%fzltot    = auxw
         ep(p)%torqxltot = auxomx
-        ep(p)%torqxltot = auxomx
         ep(p)%torqyltot = auxomy
         ep(p)%torqzltot = auxomz
         !

@@ -499,7 +499,9 @@ endif
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
 
-  dtau = 0.3_rp * minval(dli(1:3))
+  ! pseudo-time step for the contact-line relaxation below; u_ext is a unit
+  ! vector, so this is a CFL number of 0.3 on the smallest cell size
+  dtau = 0.3_rp / maxval(dli(1:3))
   max_pseudo_iter = 5
   do iter = 1, max_pseudo_iter
     u_ext=0
@@ -634,7 +636,9 @@ endif
         call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
         !
-        dtau = 0.3_rp * minval(dli(1:3))
+        ! pseudo-time step for the contact-line relaxation below; u_ext is a
+        ! unit vector, so this is a CFL number of 0.3 on the smallest cell size
+        dtau = 0.3_rp / maxval(dli(1:3))
         max_pseudo_iter = 5
         !
         call initeul(n)

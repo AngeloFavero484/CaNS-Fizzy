@@ -2,7 +2,7 @@ module prt_mod_param
 #if defined(_PARTICLE)
 !  use decomp_2d
   use mod_types
-  use mod_param  , only: pi
+  use mod_param  , only: pi,l
   !
   implicit none
   !
@@ -47,6 +47,10 @@ module prt_mod_param
   real(rp), protected :: volp
   real(rp), protected :: mominert
   real(rp), protected :: u_ini,v_ini,w_ini ! initial particle velocity (same for all particles)
+  ! initial particle position, only used when np=1 (np>1 is placed pseudo-randomly, see initparticles);
+  ! left at pos_ini_unset falls back to the legacy default placement (domain-centered x,y, z=0.755*l(3))
+  real(rp), protected :: x_ini,y_ini,z_ini
+  real(rp), parameter :: pos_ini_unset = -1.0e30_rp
 !  character(len=5), parameter :: datadir = 'data/'
 !  !
 !  real, parameter, dimension(3,2) :: rkcoeff = reshape((/ 32./60., 25./60., 45./60., 0., -17./60., -25./60. /), shape(rkcoeff))
@@ -162,7 +166,7 @@ module prt_mod_param
     implicit none
     integer, intent(in) :: myid
     integer :: iunit,ierr
-    namelist /particle/ np,radius,rho_s,ratiorho,u_ini,v_ini,w_ini
+    namelist /particle/ np,radius,rho_s,ratiorho,u_ini,v_ini,w_ini,x_ini,y_ini,z_ini
     namelist /collision_parameters/ Nstretch,dt_estim,r_dtcol,en,et,muc
 #if defined(_EULER)
     namelist /particle_euler/ eps_sol
@@ -177,6 +181,9 @@ module prt_mod_param
     u_ini = 0.0_rp
     v_ini = 0.0_rp
     w_ini = -28.78_rp
+    x_ini = pos_ini_unset
+    y_ini = pos_ini_unset
+    z_ini = pos_ini_unset
     Nstretch = 8.0_rp
     dt_estim = 0.003_rp !0.05_rp !0.003
     r_dtcol  = 50        !=dt/dtp (number of collision sub-steps per macro time step)
@@ -208,6 +215,11 @@ module prt_mod_param
     !
     ! derived quantities
     !
+    if(np == 1) then
+      if(x_ini == pos_ini_unset) x_ini = l(1)*0.5_rp
+      if(y_ini == pos_ini_unset) y_ini = l(2)*0.5_rp
+      if(z_ini == pos_ini_unset) z_ini = l(3)*0.755_rp
+    endif
     r_dtcoli = 1.0_rp/real(r_dtcol,rp)
     volp = (4._rp/3._rp)*pi*radius**3._rp
     mominert = (2._rp/5._rp)*volp*radius**2._rp

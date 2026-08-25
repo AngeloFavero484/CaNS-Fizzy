@@ -107,19 +107,19 @@ module mod_extend
             v = v_ext(i,j,k)
             w = w_ext(i,j,k)
           if (u > 0.0_rp) then
-            dpsidx = (psi(i,j,k) - psi(i-1,j,k)) / dli(1)
+            dpsidx = (psi(i,j,k) - psi(i-1,j,k)) * dli(1)
           else
-            dpsidx = (psi(i+1,j,k) - psi(i,j,k)) / dli(1)
+            dpsidx = (psi(i+1,j,k) - psi(i,j,k)) * dli(1)
           end if
           if (v > 0.0_rp) then
-            dpsidy = (psi(i,j,k) - psi(i,j-1,k)) / dli(2)
+            dpsidy = (psi(i,j,k) - psi(i,j-1,k)) * dli(2)
           else
-            dpsidy = (psi(i,j+1,k) - psi(i,j,k)) / dli(2)
+            dpsidy = (psi(i,j+1,k) - psi(i,j,k)) * dli(2)
           end if
           if (w > 0.0_rp) then
-            dpsidz = (psi(i,j,k) - psi(i,j,k-1)) / dli(3)
+            dpsidz = (psi(i,j,k) - psi(i,j,k-1)) * dli(3)
           else
-            dpsidz = (psi(i,j,k+1) - psi(i,j,k)) / dli(3)
+            dpsidz = (psi(i,j,k+1) - psi(i,j,k)) * dli(3)
           end if
           !
           psi(i,j,k) = psi(i,j,k) - dtau * (u*dpsidx + v*dpsidy + w*dpsidz)

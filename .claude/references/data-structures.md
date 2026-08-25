@@ -65,7 +65,7 @@ arrays over `0:n(3)+1`. The `_g` suffixed versions are the **global** z-grid.
 
 **`dli` and `dzci`/`dzfi` are INVERSE spacings.** A derivative is
 `(f(i) - f(i-1)) * dli(1)`, never `/ dli(1)`.
-(See the caveat in `contact-line-model.md` — `extend.f90` gets this wrong.)
+(`extend.f90` got this wrong until 2026-08-25; see `contact-line-model.md`.)
 
 ---
 

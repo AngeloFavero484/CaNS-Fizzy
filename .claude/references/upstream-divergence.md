@@ -114,10 +114,13 @@ When resolving, the invariants to preserve are:
 Recorded here so they are not re-derived each session. **None of these have been
 fixed** — check the file before assuming otherwise.
 
-1. **`extend.f90:110-122` — gradients divided by `dli` instead of multiplied.**
-   `dli` is the inverse spacing, so the upwind derivative is off by `dx²`.
-   Partially compensated by `dtau = 0.3*minval(dli)` also being inverse-scaled.
-   See `contact-line-model.md`. Fixing one without the other will change results.
+1. ~~**`extend.f90` gradients divided by `dli` instead of multiplied.**~~
+   **FIXED 2026-08-25** (commit `Fix inverse grid-spacing scaling...`). Both the
+   gradients in `extend.f90` and the paired `dtau` in `main.f90` were corrected
+   together; the two errors cancelled exactly on isotropic uniform grids, so
+   results on all existing cases are unchanged. See `contact-line-model.md`.
+   *Still latent:* `advect_vof_upwind` uses the uniform `dli(3)` for z rather
+   than `dzci`/`dzfi`, so a clustered z-grid is not handled correctly there.
 
 2. **Capillary force is computed but not applied.** `Fstot` → `F_cap` is logged
    to `forces_data.csv`; the momentum terms are commented out at

@@ -83,7 +83,7 @@ the physical BCs**; non-periodic walls are handled separately via `is_bound`.
 ## Grid conventions that bite
 
 - **`dli`, `dzci`, `dzfi` are INVERSE spacings.** A derivative is `* dli(1)`,
-  never `/ dli(1)`. `extend.f90:110-122` gets this wrong — see the caveat below.
+  never `/ dli(1)`. `extend.f90` got this wrong until 2026-08-25 — see below.
 - `alphac` and friends are declared `dimension(1-nh_wide:,1-nh_wide:,1-nh_wide:)`
   while core fields are `(0:,0:,0:)`. `nh_wide = 1` so the bounds coincide, but
   do not mix the declaration styles across a call boundary.
@@ -93,10 +93,11 @@ the physical BCs**; non-periodic walls are handled separately via `is_bound`.
 
 ## Known latent issues — check before "fixing"
 
-1. **`extend.f90:110-122` divides by `dli` instead of multiplying.** Off by `dx²`.
-   Partially compensated by `dtau = 0.3*minval(dli)` (`main.f90:637`) being
-   inverse-scaled too. **Fixing one without the other changes all existing
-   results.** Flag it to the user; do not silently correct it.
+1. ~~`extend.f90` divides by `dli` instead of multiplying.~~ **Fixed 2026-08-25**,
+   together with the paired `dtau` scaling in `main.f90`. *Still latent:*
+   `advect_vof_upwind` uses the uniform `dli(3)` for z instead of `dzci`/`dzfi`,
+   so a clustered z-grid (`gtype`/`gr` ≠ uniform) is mishandled there. All
+   current cases are uniform, so this is inactive.
 
 2. **The capillary force is computed but never applied.** `Fstot` from
    `rot_norm` is reduced, printed, and logged as `F_cap`, but the momentum terms

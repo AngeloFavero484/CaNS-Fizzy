@@ -67,23 +67,26 @@ First-order upwind advection of `psi` along `u_ext`, on cells with
 psi(i,j,k) = psi(i,j,k) - dtau * (u*dpsidx + v*dpsidy + w*dpsidz)
 ```
 
-> **Latent bug — the gradient is divided, not multiplied, by the spacing.**
-> ```fortran
-> dpsidx = (psi(i,j,k) - psi(i-1,j,k)) / dli(1)
-> ```
-> `dli` is the **inverse** spacing (`dli = 1/dl`, set in `param.f90`). A correct
-> derivative is `(psi_i - psi_{i-1}) * dli(1)`. As written this computes
-> `dpsi * dx` instead of `dpsi / dx` — off by `dx²`. Combined with
-> `dtau = 0.3 * minval(dli)` (also inverted relative to a normal CFL scaling),
-> the two errors partially compensate at the grid spacings currently in use,
-> which is why the model behaves acceptably. **Do not "fix" one without the
-> other**, and re-tune `dtau`/`max_pseudo_iter` if either is touched.
-> Everywhere else in the codebase the idiom is `*dli(1)` — compare
-> `rotnorm.f90:99-107`, which does it correctly.
-
 Driven from `main.f90` as 5 iterations with
-`dtau = 0.3_rp * minval(dli(1:3))`, both hard-coded
-(`main.f90:637–638`, and again at `502–503` for the IC).
+`dtau = 0.3_rp / maxval(dli(1:3))` (i.e. a CFL number of 0.3 on the smallest
+cell), both hard-coded (`main.f90:639–641`, and again at `502–504` for the IC).
+
+> **Fixed (2026-08).** This routine previously divided by `dli` instead of
+> multiplying — `dli` is the *inverse* spacing, so the upwind derivative was
+> computing `dpsi * dx` instead of `dpsi / dx`. It was paired with
+> `dtau = 0.3 * minval(dli)`, which is also inverse-scaled, and on an
+> **isotropic uniform grid the two errors cancel exactly**:
+> `(0.3/h)·u·(Δpsi·h) == (0.3·h)·u·(Δpsi/h)`. Every example case uses such a
+> grid, which is why the model behaved correctly and the defect stayed hidden.
+> Both halves were corrected together, so results on uniform grids are
+> unchanged (to within floating-point ordering); on an **anisotropic or
+> z-stretched grid the old code was wrong** and the new code is right.
+>
+> Remaining limitation: `advect_vof_upwind` still uses the uniform `dli(3)`
+> for z rather than the local `dzci`/`dzfi`, so a clustered z-grid
+> (`gtype`/`gr` ≠ uniform) is still not handled correctly here. All current
+> cases use `gtype = 1, gr = 0.`, so this is latent, not active. Fixing it
+> requires passing `dzci`/`dzfi` into the routine.
 
 ## Step 3 — the capillary force (`src/rotnorm.f90::rot_norm`)
 
@@ -178,8 +181,8 @@ Keep it — it is the documented alternative if the current model misbehaves.
 |---|---|---|
 | `theta` | `input.nml` `&two_fluid` | the prescribed contact angle, **degrees** |
 | `eps_sol` | `input.nml` `&particle_euler` | width of the diffuse solid shell in cells → width of the contact-line band |
-| `max_pseudo_iter` | `main.f90:638` (and `503`) | hard-coded `5`. More = stronger enforcement, more round-off |
-| `dtau` | `main.f90:637` (and `502`) | hard-coded `0.3*minval(dli)`. See the scaling caveat above |
+| `max_pseudo_iter` | `main.f90:641` (and `504`) | hard-coded `5`. More = stronger enforcement, more round-off |
+| `dtau` | `main.f90:639` (and `502`) | hard-coded `0.3/maxval(dli)` = CFL 0.3 on the smallest cell |
 | `alpha_min` | `extend.f90:101` | hard-coded `0.5`, the relaxation band threshold |
 
 The three hard-coded values are prime candidates for promotion to `input.nml` if

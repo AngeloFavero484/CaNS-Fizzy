@@ -1,0 +1,82 @@
+&dns
+ng(1:3) = 192, 192, 480
+l(1:3)  = 12., 12., 30.
+gtype = 1, gr = 0.
+cfl = 0.95, dtmax = 1.e9, dt_f = -1.
+is_solve_ns = T, is_track_interface = T
+inivel = 'zer'
+is_wallturb = F, is_forced_hit = F
+nstep = 10000, time_max = 10., tw_max = 0.1
+stop_type(1:3) = T, F, F
+restart = F, is_overwrite_save = T, nsaves_max = 0
+icheck = 10, iout0d = 1, iout1d = 0, iout2d = 100, iout3d = 0, isave = 100
+cbcvel(0:1,1:3,1) = 'D','D', 'D','D', 'D','D'
+cbcvel(0:1,1:3,2) = 'D','D', 'D','D', 'D','D'
+cbcvel(0:1,1:3,3) = 'D','D', 'D','D', 'D','D'
+cbcpre(0:1,1:3)   = 'N','N', 'N','N', 'N','N'
+bcvel(0:1,1:3,1) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
+bcpre(0:1,1:3)   =  0.,0.,   0.,0.,   0.,0.
+bforce(1:3) = 0., 0., 0.
+gacc(1:3) = 0., 0., -9.81
+dims(1:2) = 0, 0
+/
+
+&scalar
+inisca          = 'zer'
+cbcsca(0:1,1:3) = 'P','P',  'P','P',  'N','N'
+bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+ssource         = 0.
+/
+
+&two_fluid
+inipsi            = 'zer'
+cbcpsi(0:1,1:3)   = 'N','N',  'N','N',  'N','N'
+cbcnor(0:1,1:3,1) = 'N','N',  'N','N',  'N','N'
+cbcnor(0:1,1:3,2) = 'N','N',  'N','N',  'N','N'
+cbcnor(0:1,1:3,3) = 'N','N',  'N','N',  'N','N'
+bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
+bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
+rho12(1:2)        =  935., 1.
+mu12(1:2)         =  60.86, 0.677735
+theta             =  154.
+sigma             =  79112.9
+ka12(1:2)         =  0., 0.
+cp12(1:2)         =  0., 0.
+beta12(1:2)       =  0., 0.
+psi_thickness_factor =  0.25
+/
+
+&cudecomp
+cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
+cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+/
+
+&particle
+np       = 1
+radius   = 0.5
+rho_s    = 7800.
+ratiorho = 8.3422
+u_ini    = 0.
+v_ini    = 0.
+w_ini    = 0.
+x_ini    = 6.
+y_ini    = 6.
+z_ini    = 29.25
+/
+
+&collision_parameters
+Nstretch = 8.0
+dt_estim = 0.00005
+r_dtcol  = 50
+en       = 0.97
+et       = 0.10
+muc      = 0.0
+/
+
+&particle_euler
+eps_sol = 1.5
+/

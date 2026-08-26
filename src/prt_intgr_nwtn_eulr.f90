@@ -668,9 +668,6 @@ module prt_mod_intgr_nwtn_eulr
       do p=1,pmax
         if (ep(p)%mslv > 0) then
           if (colrank(p) /= -1) then ! Particle with collision => dtp
-!            PRINT *, "A collision occured"
-!            call mpi_finalize(ierr)
-!            stop
             ep(p)%u = op(p)%u + &
                       (1.0_rp-colflgx(p))*( &
                       (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fxltot+op(p)%fxltot)/(ep(p)%vol*rho_s) + &
@@ -699,11 +696,27 @@ module prt_mod_intgr_nwtn_eulr
                       rkcoeffab*0.5_rp*dtp*(ep(p)%colfz+op(p)%colfz)/(ep(p)%vol*ep(p)%ratiorho) !+ &
 !                      rkcoeffab*dtp*0.5_rp*(Fstot(3)+Fstot_old(3))/(ep(p)%vol*rho_s)
             ep(p)%z = op(p)%z + 0.5_rp*rkcoeffab*dtp*(ep(p)%w+op(p)%w)
-!            if (ep(p)%z<8.01+radius .and. ep(p)%z>7.99+radius) then
-!              We=(rho12(1)*(ep(p)%w)**2*(2*radius))/sigma
-!              Re=(rho12(1)*abs(ep(p)%w)*(2*radius))/mu12(1)
-!            end if
-!           !
+            if (r == r_dtcol) then
+              F_sup = 0
+              F_ibm = 0
+              F_inertia = 0
+              F_w = 0
+              F_buoy = 0
+              F_cap = 0
+              F_sup = F_sup - rkcoeffab*0.5_rp*(ep(p)%fcapz+op(p)%fcapz)
+              F_ibm = F_ibm - ep(p)%fzltot*rkcoeffab
+              F_inertia = F_inertia + (ep(p)%intw-op(p)%intw)/dt
+              F_w = F_w + (ep(p)%vol*rho_s)*gacc(3)*rkcoeffab
+              F_buoy = F_buoy + gacc(3)*(-ep(p)%intrhoz)*rkcoeffab
+              F_cap = F_cap + 0.5_rp*(Fstot(3)+Fstot_old(3))*rkcoeffab
+              if (MOD(istep, iout0d) == 0) then
+                write(csv_unit, '(7(E16.8, ","), E16.8)') &
+                      F_sup, F_ibm, F_inertia, F_w, F_buoy, F_cap, ep(p)%z, ep(p)%w
+                flush(csv_unit)
+              endif
+              PRINT *, "ep(p)%z", ep(p)%z
+              PRINT *, "ep(p)%w", ep(p)%w
+            endif
             ep(p)%omx = op(p)%omx + &
                         (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqxltot+op(p)%torqxltot)/(ep(p)%mominert*rho_s) + &
                         r_dtcoli*(ep(p)%intomx-op(p)%intomx)/(ep(p)%mominert*rho_s) !+ &
@@ -750,13 +763,13 @@ module prt_mod_intgr_nwtn_eulr
 !                      rkcoeffab*dtp*0.5_rp*(Fstot(3)+Fstot_old(3))/(ep(p)%vol*rho_s)
             ep(p)%z = op(p)%z + 0.5_rp*rkcoeffab*dtp*(ep(p)%w+op(p)%w)
             if (r == r_dtcol) then
-            if (ep(p)%z<8.01+radius .and. ep(p)%z>7.99+radius) then
-              We=(rho12(1)*(ep(p)%w)**2*(2*radius))/sigma
-              Re=(rho12(1)*abs(ep(p)%w)*(2*radius))/mu12(1)
-              PRINT *, "v_z", ep(p)%w
-              PRINT *, "Weber", We
-              PRINT *, "Reynolds", Re
-            end if
+!            if (ep(p)%z<8.01+radius .and. ep(p)%z>7.99+radius) then
+!              We=(rho12(1)*(ep(p)%w)**2*(2*radius))/sigma
+!              Re=(rho12(1)*abs(ep(p)%w)*(2*radius))/mu12(1)
+!              PRINT *, "v_z", ep(p)%w
+!              PRINT *, "Weber", We
+!              PRINT *, "Reynolds", Re
+!            end if
                F_sup=0
                F_ibm=0
                F_inertia=0
@@ -774,12 +787,12 @@ module prt_mod_intgr_nwtn_eulr
                     F_sup, F_ibm, F_inertia, F_w, F_buoy, F_cap, ep(p)%z, ep(p)%w
               flush(csv_unit)
               endif
-            PRINT *, "F_sup", F_sup
-            PRINT *, "F_ibm", F_ibm
-            PRINT *, "F_inertia", F_inertia
-            PRINT *, "F_w", F_w
-            PRINT *, "F_bouy", F_buoy
-            PRINT *, "F_cap", F_cap
+!            PRINT *, "F_sup", F_sup
+!            PRINT *, "F_ibm", F_ibm
+!            PRINT *, "F_inertia", F_inertia
+!            PRINT *, "F_w", F_w
+!            PRINT *, "F_bouy", F_buoy
+!            PRINT *, "F_cap", F_cap
             PRINT *, "ep(p)%z", ep(p)%z
             PRINT *, "ep(p)%w", ep(p)%w
             endif

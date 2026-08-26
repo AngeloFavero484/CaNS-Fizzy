@@ -663,6 +663,8 @@ endif
           PRINT *, "Fstot", Fstot
         end if
       else
+        call initeul(n)
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,alphac)
         !$acc kernels default(present) async(1)
         psiflx_x(:,:,:) = 0.
         psiflx_y(:,:,:) = 0.

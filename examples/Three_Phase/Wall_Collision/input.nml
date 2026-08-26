@@ -2,7 +2,7 @@
 ng(1:3) = 192, 192, 480
 l(1:3)  = 12., 12., 30.
 gtype = 1, gr = 0.
-cfl = 0.95, dtmax = 1.e9, dt_f = -1.
+cfl = 0.2, dtmax = 1.e9, dt_f = -1.
 is_solve_ns = T, is_track_interface = F
 inivel = 'zer'
 is_wallturb = F, is_forced_hit = F
@@ -40,8 +40,8 @@ bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
 bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
 bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
 bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
-rho12(1:2)        =  935., 1.
-mu12(1:2)         =  60.86, 0.677735
+rho12(1:2)        =  935., 935.
+mu12(1:2)         =  60.86, 60.86
 theta             =  154.
 sigma             =  0.
 ka12(1:2)         =  0., 0.
@@ -70,7 +70,7 @@ z_ini    = 29.25
 
 &collision_parameters
 Nstretch = 8.0
-dt_estim = 0.00005
+dt_estim = 0.001
 r_dtcol  = 50
 en       = 0.97
 et       = 0.10

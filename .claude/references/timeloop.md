@@ -64,13 +64,12 @@ call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)          ! 625  rebuild the SD
 call cmpt_norm_curv(n,dli,dzci,dzfi,phi,...)               ! 628  normals+curvature FROM phi
 call boundp(cbccur,...,kappa) ; boundp(cbcnor(:,:,1..3))   ! 632-635
 
-dtau = 0.3_rp * minval(dli(1:3))                           ! 637  <-- see note below
-max_pseudo_iter = 5                                        ! 638
+dtau = dtau_cfl / maxval(dli(1:3))                         ! 652  <-- see note below
 
-call initeul(n)                                            ! 640  rebuild alphac + norm_part*
-call boundp(cbcpsi,...,alphac)                             ! 641
+call initeul(n)                                            ! 654  rebuild alphac + norm_part*
+call boundp(cbcpsi,...,alphac)                             ! 655
 
-do iter = 1, 5                                             ! 642  CONTACT-LINE RELAXATION
+do iter = 1, max_pseudo_iter                               ! 656  CONTACT-LINE RELAXATION
   u_ext = 0 ; v_ext = 0 ; w_ext = 0
   call compute_uextend(n,theta,normx,normy,normz,u_ext,v_ext,w_ext)   ! extend.f90
   call advect_vof_upwind(n,dli,dtau,u_ext,v_ext,w_ext,psi)            ! extend.f90
@@ -79,20 +78,23 @@ do iter = 1, 5                                             ! 642  CONTACT-LINE R
   call boundp(cbcnor(:,:,1..3)) ; call boundp(...,kappa)
 end do
 
-call rot_norm(n,dli,dzci,psi,theta,is_bound,...,Fs)        ! 655  rotnorm.f90 -> capillary force
+call rot_norm(n,dli,dzci,psi,theta,is_bound,...,Fs)        ! 669  rotnorm.f90 -> capillary force
 Fstot_old = Fstot
-call MPI_ALLREDUCE(Fs,Fstot,3,MPI_REAL_RP,MPI_SUM,...)     ! 657
+call MPI_ALLREDUCE(Fs,Fstot,3,MPI_REAL_RP,MPI_SUM,...)     ! 671
 ```
 
-**Two things to flag about `dtau`:**
-`dtau = 0.3 * minval(dli(1:3))` — `dli` is *inverse* spacing, so this is
-`0.3 / max(dl)`, i.e. `dtau` grows as the grid is refined. A pseudo-time step
-that scales like `1/dx` combined with an upwind advection of `psi` is the
-opposite of the usual CFL scaling. It is stable in practice only because
-`u_ext` is a unit vector and the loop runs 5 iterations, but it is worth
-knowing if the contact line behaves oddly under grid refinement.
+**About `dtau`:** `dtau = dtau_cfl / maxval(dli(1:3))` — `dli` is *inverse*
+spacing, so `maxval(dli)` is the smallest cell and this is `dtau_cfl * min(dl)`,
+shrinking under refinement as a CFL condition should. Since `u_ext` is a unit
+vector, `dtau_cfl` *is* the CFL number of the upwind `psi` advection.
 
-The same block is duplicated verbatim at `main.f90:502–522` for the initial
+`dtau_cfl` and `max_pseudo_iter` are runtime inputs (`&contact_line` in
+`input.nml`, defaults `0.3` and `5`); they were hard-coded here until they were
+promoted. An earlier version of this line read `0.3_rp * minval(dli(1:3))`,
+which scaled as `1/dx` — the opposite of CFL — and was corrected together with
+the inverse-spacing bug in `extend.f90`.
+
+The same block is duplicated verbatim at `main.f90:516–532` for the initial
 condition, before the timeloop starts.
 
 ### 2. Scalar transport — `main.f90:668–671`

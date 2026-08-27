@@ -28,8 +28,9 @@ The contact-line band is defined as the cells where `alphac` is strictly between
 
 ## Step 1 — the extension velocity (`src/extend.f90::compute_uextend`)
 
-Runs on cells with `alphac > 0.5 .and. alphac < 1` (note: **0.5**, a narrower
-band than `rot_norm` uses).
+Runs on cells with `alphac > alpha_min .and. alphac < 1` (`alpha_min` defaults
+to **0.5**, a narrower band than `rot_norm` uses; `&contact_line` in
+`input.nml`).
 
 Given the solid normal `n_wall = -norm_part` (pointing *into* the solid) and the
 interface normal `n_int = (normx,normy,normz)`:
@@ -60,16 +61,18 @@ non-wetting.
 
 ## Step 2 — the relaxation (`src/extend.f90::advect_vof_upwind`)
 
-First-order upwind advection of `psi` along `u_ext`, on cells with
-`alphac > 0.5 .and. alphac < 1`:
+First-order upwind advection of `psi` along `u_ext`, on the same band as
+step 1, `alphac > alpha_min .and. alphac < 1`:
 
 ```fortran
 psi(i,j,k) = psi(i,j,k) - dtau * (u*dpsidx + v*dpsidy + w*dpsidz)
 ```
 
-Driven from `main.f90` as 5 iterations with
-`dtau = 0.3_rp / maxval(dli(1:3))` (i.e. a CFL number of 0.3 on the smallest
-cell), both hard-coded (`main.f90:639–641`, and again at `502–504` for the IC).
+Driven from `main.f90` as `max_pseudo_iter` iterations with
+`dtau = dtau_cfl / maxval(dli(1:3))` (i.e. `dtau_cfl` is a CFL number on the
+smallest cell). Both come from `&contact_line` in `input.nml` and default to
+`5` and `0.3`, the values they were hard-coded to before promotion. The loop
+appears twice in `main.f90`: once in the timeloop and once for the IC.
 
 > **Fixed (2026-08).** This routine previously divided by `dli` instead of
 > multiplying — `dli` is the *inverse* spacing, so the upwind derivative was
@@ -153,16 +156,17 @@ Keep it — it is the documented alternative if the current model misbehaves.
 ## Known numerical behaviours
 
 1. **`psi ≈ 1e-16` noise around the particle.** Machine epsilon injected by the
-   repeated normalisations (`/ (norm + epsilon(1._rp))`) across 5 iterations per
-   step. Appears as faint concentric "levels" following the `alphac` shells.
+   repeated normalisations (`/ (norm + epsilon(1._rp))`) across the
+   `max_pseudo_iter` (default 5) iterations per step. Appears as faint concentric "levels" following the `alphac` shells.
    Physically meaningless — 15 orders below any real volume fraction. Already
    diagnosed and dismissed with the user. Clip with
    `where(abs(psi) < 1e-12) psi = 0._rp` only if it pollutes a diagnostic.
    *Would stop being negligible under `SINGLE_PRECISION=1`* (`~1e-7`).
 
-2. **Band mismatch.** `extend.f90` uses `alphac > 0.5`, `rotnorm.f90` uses
-   `alphac > 0`. The force is integrated over a wider shell than the one the
-   interface is relaxed on.
+2. **Band mismatch.** `extend.f90` uses `alphac > alpha_min` (default `0.5`),
+   `rotnorm.f90` uses `alphac > 0`. The force is integrated over a wider shell
+   than the one the interface is relaxed on. Lowering `alpha_min` narrows the
+   gap; `rotnorm.f90`'s threshold is still hard-coded.
 
 3. **Normals inconsistency.** The main phase-field step computes normals from
    `phi` (the SDF) under `_SDF_NORMALS`, but the pseudo-loop recomputes them
@@ -181,11 +185,19 @@ Keep it — it is the documented alternative if the current model misbehaves.
 |---|---|---|
 | `theta` | `input.nml` `&two_fluid` | the prescribed contact angle, **degrees** |
 | `eps_sol` | `input.nml` `&particle_euler` | width of the diffuse solid shell in cells → width of the contact-line band |
-| `max_pseudo_iter` | `main.f90:641` (and `504`) | hard-coded `5`. More = stronger enforcement, more round-off |
-| `dtau` | `main.f90:639` (and `502`) | hard-coded `0.3/maxval(dli)` = CFL 0.3 on the smallest cell |
-| `alpha_min` | `extend.f90:101` | hard-coded `0.5`, the relaxation band threshold |
+| `max_pseudo_iter` | `input.nml` `&contact_line` | default `5`. More = stronger enforcement, more round-off |
+| `dtau_cfl` | `input.nml` `&contact_line` | default `0.3`; `dtau = dtau_cfl/maxval(dli)`, a CFL number on the smallest cell |
+| `alpha_min` | `input.nml` `&contact_line` | default `0.5`, the relaxation band threshold |
 
-The three hard-coded values are prime candidates for promotion to `input.nml` if
-the user wants to sweep them — that would follow the same pattern as commits
-`183391a` and `7fd5ccb`, which moved particle and collision constants to the
-namelist.
+All five are runtime inputs. The last three used to be hard-coded — in
+`main.f90` (`max_pseudo_iter`, `dtau`) and `extend.f90` (`alpha_min`) — and were
+promoted to the new `&contact_line` namelist following the same pattern as
+commits `183391a` and `7fd5ccb`. Their defaults reproduce the old hard-coded
+values exactly, so an `input.nml` without a `&contact_line` group is unchanged
+bit for bit; see [`input-namelists.md`](input-namelists.md) for the full table.
+
+Promoting `alpha_min` also folded in the *second* hard-coded `0.5` in
+`extend.f90`, the band test at the top of `compute_uextend`. The two must move
+together: building `u_ext` on one band and advecting `psi` on another is
+incoherent. This does **not** touch `rotnorm.f90`'s `alphac > 0`, so the band
+mismatch in the section above still stands — lowering `alpha_min` narrows it.

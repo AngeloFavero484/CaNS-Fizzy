@@ -1,7 +1,7 @@
 # Reference: `input.nml` — every runtime parameter
 
 Read by two routines:
-- `src/param.f90::read_input` → `&dns`, `&scalar`, `&two_fluid`, `&cudecomp`
+- `src/param.f90::read_input` → `&dns`, `&scalar`, `&two_fluid`, `&contact_line`, `&cudecomp`
 - `src/prt_param.f90::read_particle_input` → `&particle`, `&collision_parameters`, `&particle_euler`
 
 Both open the **same file** `input.nml`, in the working directory of the
@@ -89,6 +89,30 @@ defaults listed below apply. Upstream docs: [`docs/INFO_INPUT.md`](../../docs/IN
 | `'zalesak-disk'` | Zalesak rotating-slotted-disk advection test |
 
 Cases using a `*3`/`*2`/`*1` option **require a `spheres.in`** next to `input.nml`.
+
+---
+
+## `&contact_line` — numerics of the extended contact-line model
+
+Fork-only. These three drive the pseudo-time relaxation in `main.f90` that
+imposes `theta` at the particle surface (see
+[`contact-line-model.md`](contact-line-model.md)). They were hard-coded until
+they were promoted to the namelist; **the defaults are exactly the old
+hard-coded values**, so an `input.nml` without this group behaves as before.
+
+| parameter | default | meaning |
+|---|---|---|
+| `max_pseudo_iter` | `5` | relaxation iterations per timestep. More = stronger enforcement of `theta`, but more of the machine-epsilon `psi` round-off noted in `contact-line-model.md`. |
+| `dtau_cfl` | `0.3` | pseudo-timestep as a CFL number on the smallest cell: `dtau = dtau_cfl/maxval(dli)`. `u_ext` is a unit vector, so this is a true CFL. Raising it past ~0.5 risks the upwind advection going unstable. |
+| `alpha_min` | `0.5` | lower edge of the `alphac` band the relaxation acts on (band is `alpha_min < alphac < 1`). Applies to **both** `compute_uextend` and `advect_vof_upwind` in `extend.f90`, which must agree. |
+
+Note `alpha_min` does **not** move the band `rotnorm.f90` integrates the
+capillary force over — that one is still `alphac > 0`. The band mismatch
+documented in `contact-line-model.md` is therefore unchanged, and lowering
+`alpha_min` towards 0 narrows the gap.
+
+The whole block is skipped when `is_track_interface = F`, so these knobs have
+no effect in that mode.
 
 ---
 

@@ -64,7 +64,8 @@ program cans
                                  rho0,rho12,mu12,theta,sigma,gacc,ka12,cp12,beta12, &
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
-                                 vof_thinc_beta
+                                 vof_thinc_beta, &
+                                 max_pseudo_iter,dtau_cfl
   use mod_rotnorm        , only: rot_norm
   use mod_extend         , only: compute_uextend, advect_vof_upwind
 #if 1
@@ -144,7 +145,7 @@ program cans
   real(rp) :: mass,mass_tot
   integer :: irk,istep
   real(rp) :: dtau
-  integer :: iter, max_pseudo_iter
+  integer :: iter
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
@@ -511,9 +512,8 @@ endif
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
 
   ! pseudo-time step for the contact-line relaxation below; u_ext is a unit
-  ! vector, so this is a CFL number of 0.3 on the smallest cell size
-  dtau = 0.3_rp / maxval(dli(1:3))
-  max_pseudo_iter = 5
+  ! vector, so dtau_cfl is a CFL number on the smallest cell size
+  dtau = dtau_cfl / maxval(dli(1:3))
   do iter = 1, max_pseudo_iter
     u_ext=0
     v_ext=0
@@ -648,9 +648,8 @@ endif
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
         !
         ! pseudo-time step for the contact-line relaxation below; u_ext is a
-        ! unit vector, so this is a CFL number of 0.3 on the smallest cell size
-        dtau = 0.3_rp / maxval(dli(1:3))
-        max_pseudo_iter = 5
+        ! unit vector, so dtau_cfl is a CFL number on the smallest cell size
+        dtau = dtau_cfl / maxval(dli(1:3))
         !
         call initeul(n)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,alphac)

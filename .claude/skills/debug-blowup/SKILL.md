@@ -78,7 +78,7 @@ adaptive (`dt_f = -1`).
 - **Fix only if it pollutes a diagnostic:** clip after the pseudo-loop with
   `where(abs(psi) < 1e-12) psi = 0._rp`.
 - If it is *growing* or spreading into the bulk, that is different — then check
-  `dtau`/`max_pseudo_iter` (`main.f90:637-638`) and the THINC `beta`.
+  `dtau_cfl`/`max_pseudo_iter` (`&contact_line` in `input.nml`) and the THINC `beta`.
 - **This would stop being negligible under `SINGLE_PRECISION=1`** (`~1e-7`).
 
 ## Particle behaving wrongly

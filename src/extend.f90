@@ -2,7 +2,7 @@ module mod_extend
   !
   use mpi
   use mod_types
-  use mod_param         , only: pi,sigma
+  use mod_param         , only: pi,sigma,alpha_min
 #if defined(_PARTICLE)
     use prt_mod_common    , only: alphac,norm_partx,norm_party,norm_partz
 #endif
@@ -31,7 +31,7 @@ module mod_extend
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          if (alphac(i,j,k) > 0.5_rp .and. alphac(i,j,k) < 1._rp ) then
+          if (alphac(i,j,k) > alpha_min .and. alphac(i,j,k) < 1._rp ) then
             n_wall(1)=-norm_partx(i,j,k)
             n_wall(2)=-norm_party(i,j,k)
             n_wall(3)=-norm_partz(i,j,k)
@@ -96,9 +96,7 @@ module mod_extend
     integer  :: i, j, k
     real(rp) :: u, v, w
     real(rp) :: dpsidx, dpsidy, dpsidz
-    real(rp) :: alpha_min
-    
-    alpha_min=0.5_rp
+
     do k = 1, n(3)
       do j = 1, n(2)
         do i = 1, n(1)

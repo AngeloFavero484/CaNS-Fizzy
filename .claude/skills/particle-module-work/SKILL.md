@@ -128,8 +128,10 @@ If you reorder anything in the timeloop:
 4. `rot_norm` after the pseudo-loop.
 
 Also: the contact-line block exists **twice** — once for the initial condition
-(`main.f90:502-522`) and once in the loop (`637-660`). Changes to `dtau`,
-`max_pseudo_iter`, or the call sequence must be made in **both**.
+(`main.f90:516-532`) and once in the loop (`652-671`). `dtau_cfl` and
+`max_pseudo_iter` now come from `&contact_line` in `input.nml`, so retuning them
+needs no code edit -- but changes to the **call sequence** must still be made in
+**both** copies.
 
 ## OpenACC
 

@@ -76,6 +76,12 @@ real(rp), protected, dimension(2) :: ka12,cp12,beta12
 real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
 real(rp), protected               :: psi_thickness_factor
 real(rp), protected               :: rho0 ! not an input
+!
+! extended contact-line model input parameters (fork-only)
+!
+integer , protected               :: max_pseudo_iter
+real(rp), protected               :: dtau_cfl
+real(rp), protected               :: alpha_min
 #if defined(_OPENACC)
 !
 ! cuDecomp input parameters
@@ -118,6 +124,8 @@ contains
                   theta,sigma,rho12,mu12, &
                   ka12,cp12,beta12, &
                   psi_thickness_factor
+    namelist /contact_line/ &
+                  max_pseudo_iter,dtau_cfl,alpha_min
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -155,6 +163,12 @@ contains
     psi_thickness_factor = 0.50 ! 0.25?
 #endif
     !
+    ! defaults reproduce the values these three used to be hard-coded to,
+    ! in main.f90 (max_pseudo_iter, dtau_cfl) and extend.f90 (alpha_min),
+    ! so an input.nml without a &contact_line group behaves exactly as before
+    !
+    max_pseudo_iter = 5; dtau_cfl = 0.3_rp; alpha_min = 0.5_rp
+    !
     ! read input file
     !
     open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
@@ -164,6 +178,8 @@ contains
         read(iunit,nml=scalar,iostat=ierr)
         rewind(iunit)
         read(iunit,nml=two_fluid,iostat=ierr)
+        rewind(iunit)
+        read(iunit,nml=contact_line,iostat=ierr)
       else
         if(myid == 0) print*, 'Error reading the input file'
         if(myid == 0) print*, 'Aborting...'

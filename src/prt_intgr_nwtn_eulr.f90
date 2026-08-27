@@ -42,6 +42,9 @@ module prt_mod_intgr_nwtn_eulr
     real(rp), intent(in), dimension(3) :: Fstot_old
     real(rp), intent(inout)            :: F_ibm,F_inertia,F_w,F_buoy,F_cap
     integer, parameter :: csv_unit = 5555
+    ! one forces_data.csv row per particle: F_sup,F_ibm,F_inertia,F_w,F_buoy,F_cap,z,w
+    integer, parameter :: nlogv = 8
+    real(rp), dimension(nlogv,np) :: logbuf,logbuf_all
     real(rp) :: rkcoeffab
     real(rp) :: F_sup
     integer :: p,q,botw,topw,nb,nbsend,nbrec,iter,itermax,r
@@ -795,29 +798,45 @@ module prt_mod_intgr_nwtn_eulr
     ! this inside the do-while would write one row per iteration instead of one.
     !
     if (r == r_dtcol) then
+      !
+      ! Each row is assembled by the rank that masters the particle, but that
+      ! rank changes whenever the centre crosses a pencil boundary, so the
+      ! master cannot be the one to write the file. Instead every rank fills
+      ! logbuf -- zeros for the particles it does not master -- and an MPI_SUM
+      ! reduction onto rank 0 picks up exactly the master's values, since
+      ! mastership of a given particle is unique. rank 0 then does all the I/O.
+      !
+      ! prt_comm_cart is created from MPI_COMM_WORLD with reorder = .false.,
+      ! so its rank 0 is the same process as myid == 0, which owns the unit.
+      !
+      logbuf(:,:) = 0.0_rp
       do p=1,pmax
         if (ep(p)%mslv > 0) then
-          F_sup = 0
-          F_ibm = 0
-          F_inertia = 0
-          F_w = 0
-          F_buoy = 0
-          F_cap = 0
-          F_sup = F_sup - rkcoeffab*0.5_rp*(ep(p)%fcapz+op(p)%fcapz)
-          F_ibm = F_ibm - ep(p)%fzltot*rkcoeffab
-          F_inertia = F_inertia + (ep(p)%intw-op(p)%intw)/dt
-          F_w = F_w + (ep(p)%vol*rho_s)*gacc(3)*rkcoeffab
-          F_buoy = F_buoy + gacc(3)*(-ep(p)%intrhoz)*rkcoeffab
-          F_cap = F_cap + 0.5_rp*(Fstot(3)+Fstot_old(3))*rkcoeffab
-          if (MOD(istep, iout0d) == 0) then
-            write(csv_unit, '(7(E16.8, ","), E16.8)') &
-                  F_sup, F_ibm, F_inertia, F_w, F_buoy, F_cap, ep(p)%z, ep(p)%w
-            flush(csv_unit)
-          endif
-          PRINT *, "ep(p)%z", ep(p)%z
-          PRINT *, "ep(p)%w", ep(p)%w
+          q = ep(p)%mslv
+          F_sup     = -rkcoeffab*0.5_rp*(ep(p)%fcapz+op(p)%fcapz)
+          F_ibm     = -ep(p)%fzltot*rkcoeffab
+          F_inertia = (ep(p)%intw-op(p)%intw)/dt
+          F_w       = (ep(p)%vol*rho_s)*gacc(3)*rkcoeffab
+          F_buoy    = gacc(3)*(-ep(p)%intrhoz)*rkcoeffab
+          F_cap     = 0.5_rp*(Fstot(3)+Fstot_old(3))*rkcoeffab
+          logbuf(1:nlogv,q) = [F_sup,F_ibm,F_inertia,F_w,F_buoy,F_cap, &
+                               ep(p)%z,ep(p)%w]
         endif
       enddo
+      !
+      ! istep and iout0d are the same on every rank, so this collective is
+      ! reached by all of them.
+      !
+      if (MOD(istep, iout0d) == 0) then
+        call MPI_REDUCE(logbuf,logbuf_all,nlogv*np,MPI_REAL_RP,MPI_SUM,0, &
+                        prt_comm_cart,ierr)
+        if (myid == 0) then
+          do q=1,np
+            write(csv_unit, '(7(E16.8, ","), E16.8)') logbuf_all(1:nlogv,q)
+          enddo
+          flush(csv_unit)
+        endif
+      endif
     endif
     !
     ! new --> old, in preparation for the next collision sub-step.

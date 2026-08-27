@@ -178,12 +178,23 @@ program cans
                                              surfx_o,surfy_o,surfz_o
 #endif
   !
-  open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
-  write(csv_unit, '(A)') "F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
-  flush(csv_unit)
-  !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
+  !
+  ! forces_data.csv is opened, written and closed by rank 0 only.
+  ! The rows come from whichever rank currently masters the particle, and that
+  ! rank changes as the particle centre crosses a pencil boundary; the data is
+  ! therefore reduced onto rank 0 in intgr_nwtn_eulr before being written here.
+  ! (Opening on every rank, as was done before, gave each rank its own handle
+  ! and its own file offset on the same path, so at every change of master the
+  ! new writer resumed just after the header and overwrote the file from the
+  ! top. The open also has to come after MPI_INIT for myid to be defined.)
+  !
+  if(myid == 0) then
+    open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
+    write(csv_unit, '(A)') "F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
+    flush(csv_unit)
+  endif
   !
   ! read parameter file
   !

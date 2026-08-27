@@ -193,7 +193,7 @@ program cans
   !
   if(myid == 0) then
     open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
-    write(csv_unit, '(A)') "F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
+    write(csv_unit, '(A)') "F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
     flush(csv_unit)
   endif
   !

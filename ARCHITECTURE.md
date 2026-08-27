@@ -218,7 +218,7 @@ Written into `data/` relative to the executable (i.e. `run/data/`):
 | `time.out` | istep, dt, time (`iout0d`) |
 | `grid.bin`, `grid.out`, `geometry.out` | grid metadata, written once |
 | particle files via `outpart` | per-particle state, MPI-IO |
-| `forces_data.csv` (in `run/`, **not** `data/`) | `F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w` |
+| `forces_data.csv` (in `run/`, **not** `data/`) | `F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w` |
 
 `out1d.h90`, `out2d.h90`, `out3d.h90`, `prt_out.h90` are **include files
 compiled into `main.f90`** — editing them requires a recompile.

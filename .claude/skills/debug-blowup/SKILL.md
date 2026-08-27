@@ -94,7 +94,7 @@ adaptive (`dt_f = -1`).
 ## Instruments available
 
 1. **`forces_data.csv`** in `run/` — written every `iout0d` steps:
-   `F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`.
+   `F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`.
    Plot `ep_z`/`ep_w` against time first; a force term exploding before the
    divergence abort localises the problem.
 

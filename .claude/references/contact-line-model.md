@@ -128,13 +128,57 @@ the routine — useful to re-enable when validating.
 
 - `main.f90` prints it every step: `PRINT *, "Fstot", Fstot`
 - passed into `intgr_nwtn_eulr`, logged to `forces_data.csv` as `F_cap`
-- **NOT applied to the particle** — the momentum terms
-  `½dt(Fstot+Fstot_old)/(vol·rho_s)` are commented out at
-  `prt_intgr_nwtn_eulr.f90:675, 685, 694, 725, 735, 744`.
+- **NOT applied to the particle** — see below, this is deliberate.
 
-So in the current state the contact-line model **shapes the interface** (via
-`extend.f90`) and **measures** the capillary force, but does not feed it back
-into the particle dynamics. Uncommenting those six lines is the switch.
+#### Why it is disabled: the capillary force is already in `F_ibm`
+
+The call order decides it. `main.f90:703` runs the momentum step, which adds the
+CSF term `sigma*kappa*grad psi` (`mom.f90::momz_sigma`). Only then, at
+`main.f90:750`, does `eulint` compute the IBM reaction
+
+```fortran
+fz = alpha_eulz*rhoz*(wl - wnew(i,j,k))*dti          ! prt_eulint.f90:462
+```
+
+`wnew` there has *already* felt the surface-tension force. So `fzltot` — and
+therefore the `F_ibm` column — is the force needed to restore rigid-body motion
+against a velocity field that already carries the capillary contribution.
+Adding `Fstot` on top of it double-counts.
+
+This is confirmed by the shape of the commented-out block itself. It is **not**
+six lines that switch the capillary force on; it is **twelve, in matched pairs**:
+
+| lines | term |
+|---|---|
+| `679, 689, 698, 724, 734, 743` | `-(fcap+fcap_old)/2 · dtp/(vol·rho_s)` |
+| `681, 691, 700, 726, 736, 745` | `+(Fstot+Fstot_old)/2 · dtp/(vol·rho_s)` |
+
+A **substitution**: remove the CSF capillary force the IBM absorbed, then put
+`rotnorm.f90`'s explicit contact-line integral in its place. Enabling only the
+`+Fstot` half is a bug, not a switch.
+
+`ep(p)%fcapz` (`prt_eulint.f90:492`) is the `alpha_eul`-weighted `sigma*kappa*grad psi`
+— a direct measurement of how much capillary force the IBM picked up. Both
+estimates sit side by side in `forces_data.csv`:
+
+- `F_cap_ibm` = `-½(fcapz+fcapz_old)·rkcoeffab`
+- `F_cap`     = `+½(Fstot+Fstot_old)·rkcoeffab`
+
+If the two routes measure the same physics then `F_cap_ibm ~ -F_cap`, i.e.
+**their sum is ~0 and the substitution is a no-op**. How far from zero it runs is
+a direct measure of how much re-enabling the block would actually change the
+dynamics. They are different discretisations though — `fcapz` over the
+`alpha_eul` band truncated at `2*eps_sol`, `Fstot` over `alphac > 0` (the band
+mismatch noted above) — so expect agreement in trend and magnitude, not to
+round-off.
+
+Empirically the current arrangement is the validated one: Bouncing_Sphere
+(`sigma = 79112.9`) and Sinking_Sphere (`sigma = 96316.4`) both reproduce their
+reference results with `Fstot` disabled and surface tension fully active.
+
+So the contact-line model **shapes the interface** (via `extend.f90`) and
+**measures** the capillary force independently, while the force actually felt by
+the particle arrives through the IBM reaction.
 
 ---
 

@@ -230,7 +230,7 @@ and `y`, so a large particle constrains the maximum number of ranks.
 | `data/*_fld_*.bin` + `log_visu_3d.out` | 3D field series for visualisation |
 | `data/*_slice_fld*.bin` + `log_visu_2d_*.out` | 2D slices |
 | `data/time.out` | time step number, `dt`, physical time |
-| `forces_data.csv` | per-step force breakdown on the particle: `F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w` |
+| `forces_data.csv` | per-step force breakdown on the particle: `F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w` |
 
 ### Visualizing field data
 

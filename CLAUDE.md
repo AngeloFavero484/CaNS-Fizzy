@@ -104,12 +104,22 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
 - The capillary force on the particle, `Fstot`, is computed in `src/rotnorm.f90`
   by integrating `sigma * |grad psi x grad alphac| * t` over contact-line cells,
   then `MPI_ALLREDUCE`d.
-- In `prt_intgr_nwtn_eulr.f90` the `F_cap` contribution to the particle momentum
-  update is **currently commented out** (search `Fstot(3)+Fstot_old(3)`) — it is
-  logged to `forces_data.csv` but not fed back. Check before assuming it is active.
-- `forces_data.csv` is opened unconditionally at `main.f90:181` and written per
-  `iout0d` steps from `prt_intgr_nwtn_eulr.f90`. Columns:
-  `F_drag,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`.
+- In `prt_intgr_nwtn_eulr.f90` the `Fstot` contribution to the particle momentum
+  update is **currently commented out**, and that is deliberate, not an oversight:
+  the capillary force is *already* inside `F_ibm`. `eulint` runs after the
+  momentum step, so `fzltot = alpha_eulz*rhoz*(wl-wnew)*dti` is a reaction against
+  a velocity that has already felt `momz_sigma`'s `sigma*kappa*grad psi`. The
+  commented block is a **substitution** — twelve paired lines, `-fcapz` *and*
+  `+Fstot` — not six lines that "switch the capillary force on". Enabling only the
+  `+Fstot` half double-counts. See `.claude/references/contact-line-model.md`.
+- `forces_data.csv` is opened by **rank 0 only**, after `MPI_INIT`, and written per
+  `iout0d` steps from `prt_intgr_nwtn_eulr.f90`, where the rows are `MPI_REDUCE`d
+  onto rank 0 (the particle's master rank changes as it crosses pencil
+  boundaries). Columns:
+  `F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`. Note `F_cap_ibm` is the
+  CSF capillary force the IBM absorbed and `F_cap` is rotnorm's contact-line
+  integral: they are two estimates of the same force, so `F_cap_ibm + F_cap ~ 0`
+  is the check on whether the substitution above would change anything.
 
 ## Reading order for a cold start
 

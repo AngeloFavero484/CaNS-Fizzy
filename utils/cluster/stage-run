@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# stage-run -- set up a simulation directory on $SCRATCH from the $WORK clone.
+#
+# The code lives in $WORK (persistent, quota'd, survives the SCRATCH cleanup);
+# simulation output lives on $SCRATCH (no quota, tuned for parallel I/O).  This
+# copies the *binary* rather than symlinking it, so the executable that produced
+# a dataset always sits next to that dataset -- if you rebuild in $WORK later,
+# old run directories still show what actually ran.
+#
+# usage:
+#   stage-run <case-name> [input.nml]
+#
+#   <case-name>   directory created under $SCRATCH/runs/
+#   [input.nml]   input to seed with; defaults to the repo template
+#                 (src/input.nml).  An examples/ case works too:
+#                 stage-run bounce $REPO/examples/Three_Phase/Bouncing_Sphere/input.nml
+#
+# After staging: edit input.nml and jobfile.slurm, then `sbatch jobfile.slurm`.
+#
+set -euo pipefail
+
+REPO=${CANS_REPO:-$WORK/CaNS-Fizzy}
+RUNS=${CANS_RUNS:-$CINECA_SCRATCH/runs}
+ACCOUNT=IscrC_TP-PBR
+MAIL=angeloraimondo.favero@studenti.unipd.it
+
+CASE=${1:-}
+if [[ -z "$CASE" ]]; then
+  echo "usage: stage-run <case-name> [input.nml]" >&2
+  exit 1
+fi
+SRC_NML=${2:-$REPO/src/input.nml}
+
+DEST=$RUNS/$CASE
+
+# never clobber an existing run -- that directory may hold irreplaceable output
+if [[ -e "$DEST" ]]; then
+  echo "error: $DEST already exists." >&2
+  echo "       Pick another name, or remove it yourself if you are sure." >&2
+  exit 1
+fi
+
+[[ -x "$REPO/run/cans" ]] || {
+  echo "error: no executable at $REPO/run/cans" >&2
+  echo "       build it first:  cd $REPO && module load openmpi fftw && make libs && make" >&2
+  exit 1
+}
+[[ -f "$SRC_NML" ]] || { echo "error: no input file at $SRC_NML" >&2; exit 1; }
+
+mkdir -p "$DEST/data"
+cp "$REPO/run/cans" "$DEST/cans"
+cp "$SRC_NML"       "$DEST/input.nml"
+
+# record exactly what was staged, so a dataset can always be traced back
+{
+  echo "case        : $CASE"
+  echo "staged      : $(date -Is)"
+  echo "staged by   : $(whoami)@$(hostname)"
+  echo "repo        : $REPO"
+  echo "commit      : $(cd "$REPO" && git rev-parse HEAD 2>/dev/null || echo unknown)"
+  echo "branch      : $(cd "$REPO" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  echo "dirty       : $(cd "$REPO" && { git diff --quiet && git diff --cached --quiet && echo no || echo YES; } 2>/dev/null)"
+  echo "binary mtime: $(date -Is -r "$REPO/run/cans")"
+  echo "input from  : $SRC_NML"
+  echo
+  echo "build.conf:"
+  grep -vE '^\s*#|^\s*$' "$REPO/build.conf" 2>/dev/null | sed 's/^/  /'
+} > "$DEST/PROVENANCE"
+
+cat > "$DEST/jobfile.slurm" <<EOF
+#!/bin/bash
+#SBATCH --job-name=$CASE
+#SBATCH --partition=g100_usr_prod
+#SBATCH --error=$CASE.%j.err
+#SBATCH --output=$CASE.%j.out
+#SBATCH --mail-user=$MAIL
+#SBATCH --mail-type=END,FAIL
+#SBATCH --nodes=2
+#SBATCH --ntasks=64
+#SBATCH --mem=100G
+#SBATCH --time=24:00:00
+#SBATCH --account=$ACCOUNT
+
+# Load required modules
+module purge
+module load openmpi
+module load fftw
+
+# Run the simulation
+srun ./cans
+EOF
+
+cat <<EOF
+staged $DEST
+
+  cans           $(cd "$REPO" && git rev-parse --short HEAD 2>/dev/null || echo '?') $(cd "$REPO" && { git diff --quiet && git diff --cached --quiet || echo '(working tree DIRTY)'; } 2>/dev/null)
+  input.nml      from $SRC_NML
+  jobfile.slurm  2 nodes / 64 tasks / 24 h  -- check dims(1:2) matches ntasks
+  data/          empty
+  PROVENANCE     what was staged and from where
+
+next:
+  cd $DEST
+  vi input.nml jobfile.slurm
+  sbatch jobfile.slurm
+EOF

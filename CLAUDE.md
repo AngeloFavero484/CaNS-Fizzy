@@ -34,9 +34,18 @@ elsewhere on the user's disk are other variants of the same code.
 
 ## Where the work happens
 
-The user runs production simulations on **CINECA Galileo100** (`g100_scratch`),
-over SSH, in a separate clone at
-`/g100_scratch/userexternal/afavero0/New_Version/CaNS-Fizzy`.
+The user runs production simulations on **CINECA Galileo100** over SSH. The
+cluster is split deliberately: the git clone and the build live in
+`$WORK/CaNS-Fizzy` (`/g100_work/IscrC_TP-PBR`, 1 TB, survives the 40-day
+`$SCRATCH` cleanup), and each run is staged as a self-contained directory under
+`$SCRATCH/runs/<case>/` (no quota, right filesystem for parallel I/O) by
+`$WORK/bin/stage-run`. See `.claude/skills/run-on-galileo/`.
+
+`$WORK` is bound to the project grant and dies with it (`IscrC_TP-PBR` ends
+2026-12-02), so it is staging, not an archive.
+
+An older clone at `/g100_scratch/userexternal/afavero0/New_Version/CaNS-Fizzy`
+is superseded but may still hold live output — check `squeue` before touching it.
 The local machine is used for editing and analysis. Consequence:
 
 - Changes must round-trip through `myfork`. Commit + push locally, pull on the cluster.

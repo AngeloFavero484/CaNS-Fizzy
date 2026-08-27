@@ -38,8 +38,12 @@ simulation output, `data/`, `*.o`, `*.mod`, `forces_data.csv`, large binaries.
 
 ## First-time setup on the supercomputer
 
-Working clone:
-`/g100_scratch/userexternal/afavero0/New_Version/CaNS-Fizzy` (CINECA Galileo100).
+Working clone: **`$WORK/CaNS-Fizzy`** (`/g100_work/IscrC_TP-PBR/CaNS-Fizzy`) on
+CINECA Galileo100 — code in `$WORK`, run output in `$SCRATCH/runs/`. See
+[`run-on-galileo`](../run-on-galileo/SKILL.md) for why, and for staging runs.
+
+(An older clone under `/g100_scratch/.../New_Version/CaNS-Fizzy` is superseded
+but may still hold live output — check `squeue` before touching it.)
 
 ### 1. SSH key on the cluster
 

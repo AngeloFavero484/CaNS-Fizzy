@@ -70,11 +70,18 @@ Current settings and what they mean are documented in
 
 ## On the CINECA cluster (Galileo100)
 
-Working clone:
-`/g100_scratch/userexternal/afavero0/New_Version/CaNS-Fizzy`
+Build in **`$WORK/CaNS-Fizzy`** (`/g100_work/IscrC_TP-PBR/CaNS-Fizzy`), never in
+a run directory — see [`run-on-galileo`](../run-on-galileo/SKILL.md). Runs are
+staged copies under `$SCRATCH/runs/`, so rebuilding never disturbs a live job.
 
-Modules must be loaded before `make` — check what the user has in their
-submission script or `~/.bashrc`. Typically a compiler + openmpi + fftw triple.
+```bash
+cd $WORK/CaNS-Fizzy && module purge && module load openmpi fftw && make libs && make
+```
+
+`make libs` is needed once per fresh clone; without it the build stops at
+`Cannot open module file 'decomp_2d.mod'`, which does not mention the missing
+library. Modules must be loaded before `make`; `openmpi` + `fftw` is verified
+working with `FCOMP=GNU`.
 If a build fails on the cluster but works locally, **suspect the module
 environment first**, not the code.
 

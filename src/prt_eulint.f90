@@ -442,12 +442,23 @@ module prt_mod_eulint
                   rhoy_old = rho + drho*0.5*(psio( i,j,k)+psio( i,j+1,k))
                   rhoz_old = rho + drho*0.5*(psio( i,j,k)+psio( i,j,k+1))
                   !
-                  fsurf_x = alpha_eulx*0.5_rp*(kappa(i+1,j,k)+kappa(i,j,k))* &
-                            sigma*(2._rp/(rho12(1)+rho12(2)))*rhox*(psi(i+1,j,k)-psi(i,j,k))/dx
-                  fsurf_y = alpha_euly*0.5_rp*(kappa(i,j+1,k)+kappa(i,j,k))* &
-                            sigma*(2._rp/(rho12(1)+rho12(2)))*rhoy*(psi(i,j+1,k)-psi(i,j,k))/dy
-                  fsurf_z = alpha_eulz*0.5_rp*(kappa(i,j,k+1)+kappa(i,j,k))* &
-                            sigma*(2._rp/(rho12(1)+rho12(2)))*rhoz*(psi(i,j,k+1)-psi(i,j,k))/dz
+                  ! restrict the forcing to the shell that is actually coupled to
+                  ! the particle, |ds| <= 2*eps_sol*dx = 3*dx on the inside
+                  ! (digitiser has already zeroed alpha_eul beyond +eps_sol*delta
+                  ! on the outside, so this clip only bites inwards). The band is
+                  ! 2*eps_sol*dx rather than eps_sol*dx because the contact-line
+                  ! extension writes psi down to -eps_sol*dx -- alphac == 1 for
+                  ! dist2c < radin2 in initeul excludes anything deeper from the
+                  ! band in extend.f90 -- and the THINC advection then drifts the
+                  ! interface further in, since alpha_eul only slaves the velocity
+                  ! partially (0.5 at ds = 0) over the outer half of that band.
+                  !
+                  ! this must precede fsurf_*: fcap* is meant to be the capillary
+                  ! force the IBM absorbed, so it has to be integrated over the
+                  ! same region as fx/fy/fz. Clipping afterwards let fcap* collect
+                  ! sigma*kappa*grad(psi) over the whole particle interior while
+                  ! the reaction fxltot covered only the shell, which hid exactly
+                  ! the leak the wider band exists to prevent.
                   !
                   if (abs(deltasx)>2*eps_sol*dx) then
                     alpha_eulx=0
@@ -460,6 +471,13 @@ module prt_mod_eulint
                   if (abs(deltasz)>2*eps_sol*dz) then
                     alpha_eulz=0
                   end if
+                  !
+                  fsurf_x = alpha_eulx*0.5_rp*(kappa(i+1,j,k)+kappa(i,j,k))* &
+                            sigma*(2._rp/(rho12(1)+rho12(2)))*rhox*(psi(i+1,j,k)-psi(i,j,k))/dx
+                  fsurf_y = alpha_euly*0.5_rp*(kappa(i,j+1,k)+kappa(i,j,k))* &
+                            sigma*(2._rp/(rho12(1)+rho12(2)))*rhoy*(psi(i,j+1,k)-psi(i,j,k))/dy
+                  fsurf_z = alpha_eulz*0.5_rp*(kappa(i,j,k+1)+kappa(i,j,k))* &
+                            sigma*(2._rp/(rho12(1)+rho12(2)))*rhoz*(psi(i,j,k+1)-psi(i,j,k))/dz
                   !
                   fx = alpha_eulx*rhox*(ul-unew(i,j,k))*dti
                   ustar(i,j,k) = unew(i,j,k) + dt*(fx/rhox)

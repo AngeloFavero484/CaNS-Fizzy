@@ -193,7 +193,7 @@ program cans
   !
   if(myid == 0) then
     open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
-    write(csv_unit, '(A)') "F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
+    write(csv_unit, '(A)') "time,F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
     flush(csv_unit)
   endif
   !
@@ -203,6 +203,15 @@ program cans
 #if defined(_PARTICLE)
   call read_particle_input(myid)
 #endif
+  !
+  ! a fresh (non-restart) run must not append to time.out/log_visu_*.out left
+  ! over from a previous run in the same datadir: out0d and write_log_output
+  ! always open with position='append', so stale rows/entries from before
+  ! would otherwise survive into the new run's log.
+  !
+  if(.not.restart) then
+    if(myid == 0) call execute_command_line('rm -f '//trim(datadir)//'time.out '//trim(datadir)//'log_visu_*.out')
+  end if
   !
   ! initialize MPI/OpenMP
   !
@@ -779,7 +788,7 @@ endif
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_PARTICLE)
-      call intgr_nwtn_eulr(n,l,dl,dli,dt,tm_coeff,istep,psi,u,v,w,Fstot,Fstot_old,F_ibm,F_inertia,F_w,F_buoy,F_cap)
+      call intgr_nwtn_eulr(n,l,dl,dli,dt,time,tm_coeff,istep,psi,u,v,w,Fstot,Fstot_old,F_ibm,F_inertia,F_w,F_buoy,F_cap)
 #endif
       end if
     end do

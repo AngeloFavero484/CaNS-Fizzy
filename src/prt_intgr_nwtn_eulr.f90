@@ -27,13 +27,14 @@ module prt_mod_intgr_nwtn_eulr
   !
   contains
   !
-  subroutine intgr_nwtn_eulr(n,l,dl,dli,dt,rkpar,istep,psi,u,v,w,Fstot,Fstot_old,F_ibm,F_inertia,F_w,F_buoy,F_cap)
+  subroutine intgr_nwtn_eulr(n,l,dl,dli,dt,time,rkpar,istep,psi,u,v,w,Fstot,Fstot_old,F_ibm,F_inertia,F_w,F_buoy,F_cap)
     implicit none
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: l
     real(rp), intent(in), dimension(3) :: dl
     real(rp), intent(in), dimension(3) :: dli
     real(rp), intent(in) :: dt
+    real(rp), intent(in) :: time
     real(rp), intent(in), dimension(2) :: rkpar
     integer , intent(in)               :: istep
     real(rp), intent(in), dimension(0:,0:,0:) :: psi
@@ -42,8 +43,8 @@ module prt_mod_intgr_nwtn_eulr
     real(rp), intent(in), dimension(3) :: Fstot_old
     real(rp), intent(inout)            :: F_ibm,F_inertia,F_w,F_buoy,F_cap
     integer, parameter :: csv_unit = 5555
-    ! one forces_data.csv row per particle: F_sup,F_ibm,F_inertia,F_w,F_buoy,F_cap,z,w
-    integer, parameter :: nlogv = 8
+    ! one forces_data.csv row per particle: time,F_sup,F_ibm,F_inertia,F_w,F_buoy,F_cap,z,w
+    integer, parameter :: nlogv = 9
     real(rp), dimension(nlogv,np) :: logbuf,logbuf_all
     real(rp) :: rkcoeffab
     real(rp) :: F_sup
@@ -819,7 +820,7 @@ module prt_mod_intgr_nwtn_eulr
           F_w       = (ep(p)%vol*rho_s)*gacc(3)*rkcoeffab
           F_buoy    = gacc(3)*(-ep(p)%intrhoz)*rkcoeffab
           F_cap     = 0.5_rp*(Fstot(3)+Fstot_old(3))*rkcoeffab
-          logbuf(1:nlogv,q) = [F_sup,F_ibm,F_inertia,F_w,F_buoy,F_cap, &
+          logbuf(1:nlogv,q) = [time,F_sup,F_ibm,F_inertia,F_w,F_buoy,F_cap, &
                                ep(p)%z,ep(p)%w]
         endif
       enddo
@@ -832,7 +833,7 @@ module prt_mod_intgr_nwtn_eulr
                         prt_comm_cart,ierr)
         if (myid == 0) then
           do q=1,np
-            write(csv_unit, '(7(E16.8, ","), E16.8)') logbuf_all(1:nlogv,q)
+            write(csv_unit, '(8(E16.8, ","), E16.8)') logbuf_all(1:nlogv,q)
           enddo
           flush(csv_unit)
         endif

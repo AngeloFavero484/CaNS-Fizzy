@@ -125,10 +125,17 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
   `iout0d` steps from `prt_intgr_nwtn_eulr.f90`, where the rows are `MPI_REDUCE`d
   onto rank 0 (the particle's master rank changes as it crosses pencil
   boundaries). Columns:
-  `F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`. Note `F_cap_ibm` is the
+  `time,F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`. Note `F_cap_ibm` is the
   CSF capillary force the IBM absorbed and `F_cap` is rotnorm's contact-line
   integral: they are two estimates of the same force, so `F_cap_ibm + F_cap ~ 0`
   is the check on whether the substitution above would change anything.
+- A fresh (non-restart) run deletes any leftover `time.out`/`log_visu_*.out` in
+  `datadir` right after `read_input` in `main.f90`, before either file is first
+  written. Both are opened with `position='append'` by `out0d`/`write_log_output`,
+  so without this cleanup a new run starting in a directory with old output would
+  silently append after stale rows instead of starting clean. `forces_data.csv`
+  is unconditionally reset with `status='replace'` regardless of `restart`, so it
+  needed no equivalent change.
 
 ## Reading order for a cold start
 

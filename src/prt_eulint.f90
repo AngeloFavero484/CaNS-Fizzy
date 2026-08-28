@@ -301,6 +301,15 @@ module prt_mod_eulint
       ep(p)%torqxltot = 0._rp
       ep(p)%torqyltot = 0._rp
       ep(p)%torqzltot = 0._rp
+      ! fcap* accumulates with '+' below and is scaled by dVeul at the end of the
+      ! nb loop, so without this reset every step inherited dVeul*(previous step),
+      ! i.e. fcap_n = dVeul*(fcap_{n-1} + sum_n). The spurious memory term is only
+      ! ~dVeul = dx**3 in relative size (2.4e-4 at D = 32), but it grows as dx**3
+      ! on coarser grids and made fcap* -- and hence the F_cap_ibm column of
+      ! forces_data.csv -- carry a grid-dependent artefact.
+      ep(p)%fcapx = 0._rp
+      ep(p)%fcapy = 0._rp
+      ep(p)%fcapz = 0._rp
     end do
     !
     !$omp parallel default(none) &

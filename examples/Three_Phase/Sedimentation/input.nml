@@ -1,7 +1,7 @@
 &dns
 ng(1:3) = 200, 200, 320
 l(1:3) = 0.1, 0.1, 0.16
-gtype = 1, gr = 1.
+gtype = 1, gr = 0.
 cfl = 0.5, dtmax = 1.e9, dt_f = -1.
 is_solve_ns = T, is_track_interface = F
 inivel = 'zer'

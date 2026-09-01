@@ -1,0 +1,88 @@
+&dns
+ng(1:3) = 200, 200, 320
+l(1:3) = 0.1, 0.1, 0.16
+gtype = 1, gr = 1.
+cfl = 0.5, dtmax = 1.e9, dt_f = -1.
+is_solve_ns = T, is_track_interface = F
+inivel = 'zer'
+is_wallturb = F, is_forced_hit = F
+nstep = 10000, time_max = 1.25, tw_max = 0.1
+stop_type(1:3) = F, T, F
+restart = F, is_overwrite_save = T, nsaves_max = 0
+icheck = 10, iout0d = 1, iout1d = 0, iout2d = 100, iout3d = 0, isave = 100
+cbcvel(0:1,1:3,1) = 'D','D', 'D','D', 'D','D'
+cbcvel(0:1,1:3,2) = 'D','D', 'D','D', 'D','D'
+cbcvel(0:1,1:3,3) = 'D','D', 'D','D', 'D','D'
+cbcpre(0:1,1:3)   = 'N','N', 'N','N', 'N','N'
+bcvel(0:1,1:3,1) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
+bcpre(0:1,1:3)   =  0.,0.,   0.,0.,   0.,0.
+bforce(1:3) = 0., 0., 0.
+gacc(1:3) = 0., 0., -9.81
+dims(1:2) = 0, 0
+/
+
+&scalar
+inisca          = 'zer'
+cbcsca(0:1,1:3) = 'P','P',  'P','P',  'N','N'
+bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+ssource         = 0.
+/
+
+&two_fluid
+inipsi            = 'zer'
+cbcpsi(0:1,1:3)   = 'N','N',  'N','N',  'N','N'
+cbcnor(0:1,1:3,1) = 'N','N',  'N','N',  'N','N'
+cbcnor(0:1,1:3,2) = 'N','N',  'N','N',  'N','N'
+cbcnor(0:1,1:3,3) = 'N','N',  'N','N',  'N','N'
+bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
+bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
+rho12(1:2)        =  960., 960.
+mu12(1:2)         =  0.058, 0.058
+theta             =  154.
+sigma             =  0.
+ka12(1:2)         =  0., 0.
+cp12(1:2)         =  0., 0.
+beta12(1:2)       =  0., 0.
+psi_thickness_factor =  0.25
+/
+
+&contact_line
+max_pseudo_iter = 5
+dtau_cfl        = 0.3
+alpha_min       = 0.5
+/
+
+&cudecomp
+cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
+cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+/
+
+&particle
+np       = 1
+radius   = 0.0075
+rho_s    = 1120.
+ratiorho = 1.16667
+u_ini    = 0.
+v_ini    = 0.
+w_ini    = 0.
+x_ini    = 0.05
+y_ini    = 0.05
+z_ini    = 0.1275
+/
+
+&collision_parameters
+Nstretch = 8.0
+dt_estim = 0.003
+r_dtcol  = 50
+en       = 0.97
+et       = 0.10
+muc      = 0.0
+/
+
+&particle_euler
+eps_sol = 1.5
+/

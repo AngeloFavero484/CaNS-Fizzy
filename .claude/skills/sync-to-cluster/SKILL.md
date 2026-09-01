@@ -126,11 +126,58 @@ If the user edited files directly on the cluster, commit and push from there,
 then pull locally. Do not copy files over `scp` between the two clones; it
 desynchronises git state.
 
-## Asking the user to run something on the cluster
+## Connecting to the cluster yourself
 
-Interactive commands (SSH logins, `sbatch`, module loads) must be run by the
-user. Tell them to type `! <command>` in the prompt — the `!` prefix runs it in
-this session so the output lands in the conversation.
+**You can usually SSH to Galileo100 directly — check before asking the user to.**
+
+```bash
+ssh afavero0@login.g100.cineca.it            # compute / login nodes
+rsync -PravzHS afavero0@data.g100.cineca.it:$SCRATCH/runs/<case>/forces_data.csv .   # data-mover host, for run output
+```
+
+There is **no `~/.ssh/config` entry** for CINECA and no long-lived key. Auth is a
+short-lived SSH certificate issued by SmallStep, which the user obtains with
+
+```bash
+step ssh login angeloraimondo.favero@studenti.unipd.it --provisioner cineca-hpc
+```
+
+That command is genuinely interactive (browser SSO + 2FA) — **the user must run
+it**, via `! <command>` in the prompt. But it deposits the certificate in the
+user's ssh-agent (`SSH_AUTH_SOCK=/run/user/1000/keyring/ssh`), which this session
+inherits, so while the certificate is valid every `ssh` and `rsync` works
+non-interactively from the Bash tool.
+
+Check for a live certificate before concluding anything:
+
+```bash
+ssh-add -l | grep CERT          # an ECDSA-CERT line = a step certificate is loaded
+```
+
+and confirm with a cheap probe rather than trusting the agent listing:
+
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=20 afavero0@login.g100.cineca.it 'hostname; echo $WORK'
+```
+
+`BatchMode=yes` matters: it makes an expired certificate fail fast instead of
+hanging on a password prompt. If the probe fails, the certificate has expired —
+ask the user to re-run `step ssh login`, then retry.
+
+### What to run unattended, and what to hand back
+
+Once connected, read-only and idempotent commands are yours to run: `git
+pull`/`status`/`log`, `squeue`, `saldo -b`, `ls`, tailing `time.out` or
+`forces_data.csv`.
+
+Hand back — or confirm first — anything that spends or destroys:
+
+- `sbatch` and `scancel` — burn (or waste) the project budget
+- `make` in `$WORK/CaNS-Fizzy` — never while a job is running out of it
+- any `rm` under `$SCRATCH/runs/`
+
+Note that these are not blocked by being "interactive" — they run fine over
+`ssh`. They need a decision from the user, which is a different thing.
 
 ## Merging upstream changes
 

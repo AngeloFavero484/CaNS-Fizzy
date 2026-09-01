@@ -101,7 +101,7 @@ Then confirm, and **delete `_check`** so the staged directory stays pristine:
 - job `COMPLETED`, exit `0:0`
 - 2D slice size == `ng(1)*ng(3)*8` bytes for the default `y = l(2)/2` plane
 - `data/log_visu_2d_slice_1.out` exists (XDMF needs it)
-- `forces_data.csv` header is `F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`
+- `forces_data.csv` header is `Time,F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w`
 - read `dt` from `Time = …` at step 3 → extrapolate wall time for the real `nstep`
 
 Never run the solver on a login node.

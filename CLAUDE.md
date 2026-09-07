@@ -144,5 +144,9 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
 3. `.claude/references/contact-line-model.md` — the physics that is unique to this fork.
 4. `.claude/references/input-namelists.md` — every runtime knob.
 
+`.claude/references/planned-changes.md` holds changes the user has decided on but
+has **not** asked for yet. Read it before touching the areas it covers; do not
+implement anything from it unasked.
+
 Skills in `.claude/skills/` cover the recurring operational tasks
 (building, adding a case, debugging a blown-up run, syncing to the cluster).

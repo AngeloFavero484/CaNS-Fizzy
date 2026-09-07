@@ -126,6 +126,14 @@ no effect in that mode.
 | `ratiorho` | `5.` | density ratio used by the **collision** effective masses (`meffn_ss = ratiorho*volp/2`). Note it is *independent* of `rho_s` — keep them physically consistent by hand. |
 | `u_ini,v_ini,w_ini` | `0,0,-28.78` | initial particle velocity (applied to **all** particles) |
 | `x_ini,y_ini,z_ini` | unset sentinel | **only honoured when `np == 1`.** Left unset → legacy default `x=l(1)/2`, `y=l(2)/2`, `z=0.755*l(3)`. Added by commit `7e46c21`. |
+| `is_solve_nwtn_eulr` | `.true.` | solve the Newton–Euler equations. `.false.` = **fixed particles**: the collision/lubrication + position/velocity update loop inside `prt_intgr_nwtn_eulr.f90` is skipped, so every particle stays at `x_ini,y_ini,z_ini` with velocity `u_ini,v_ini,w_ini` forever. Set the `*_ini` velocities to `0.` for a genuinely static sphere — the IBM keeps imposing them on a body that no longer moves (a warning is printed at start-up if they are non-zero). |
+
+With `is_solve_nwtn_eulr = F` everything *around* the integration still runs: the
+IBM forcing (`eulint`), the contact-line model, `intgr_over_sphere`, and the full
+`forces_data.csv` row — which is the point, since a fixed sphere is normally run
+precisely to measure the drag and capillary force on it. Collisions and
+lubrication are inert (they live inside the skipped loop), so
+`&collision_parameters` has no effect in this mode.
 
 `np > 1` ignores `*_ini` positions and places particles pseudo-randomly in
 `prt_initparticles.f90` with overlap rejection.

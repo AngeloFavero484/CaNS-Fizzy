@@ -51,6 +51,11 @@ module prt_mod_param
   ! left at pos_ini_unset falls back to the legacy default placement (domain-centered x,y, z=0.755*l(3))
   real(rp), protected :: x_ini,y_ini,z_ini
   real(rp), parameter :: pos_ini_unset = -1.0e30_rp
+  ! .false. holds every particle fixed: the Newton-Euler update (and with it the
+  ! collision/lubrication block) is skipped in intgr_nwtn_eulr, so the particles
+  ! keep their initial position and velocity for the whole run, while the IBM,
+  ! the contact-line model and the force diagnostics stay active
+  logical,  protected :: is_solve_nwtn_eulr
 !  character(len=5), parameter :: datadir = 'data/'
 !  !
 !  real, parameter, dimension(3,2) :: rkcoeff = reshape((/ 32./60., 25./60., 45./60., 0., -17./60., -25./60. /), shape(rkcoeff))
@@ -167,7 +172,8 @@ module prt_mod_param
     implicit none
     integer, intent(in) :: myid
     integer :: iunit,ierr
-    namelist /particle/ np,radius,rho_s,ratiorho,u_ini,v_ini,w_ini,x_ini,y_ini,z_ini
+    namelist /particle/ np,radius,rho_s,ratiorho,u_ini,v_ini,w_ini,x_ini,y_ini,z_ini, &
+                        is_solve_nwtn_eulr
     namelist /collision_parameters/ Nstretch,dt_estim,r_dtcol,en,et,muc,is_lubrication
 #if defined(_EULER)
     namelist /particle_euler/ eps_sol
@@ -185,6 +191,7 @@ module prt_mod_param
     x_ini = pos_ini_unset
     y_ini = pos_ini_unset
     z_ini = pos_ini_unset
+    is_solve_nwtn_eulr = .true.
     Nstretch = 8.0_rp
     dt_estim = 0.003_rp !0.05_rp !0.003
     r_dtcol  = 50        !=dt/dtp (number of collision sub-steps per macro time step)
@@ -217,6 +224,13 @@ module prt_mod_param
     !
     ! derived quantities
     !
+    if(.not.is_solve_nwtn_eulr .and. myid == 0) then
+      print*, 'Newton-Euler equations are NOT solved: the particles are held fixed.'
+      if(u_ini /= 0._rp .or. v_ini /= 0._rp .or. w_ini /= 0._rp) then
+        print*, 'WARNING: u_ini,v_ini,w_ini are non-zero but the particle positions are frozen.'
+        print*, '         The IBM will impose this velocity on a particle that does not move.'
+      end if
+    end if
     if(np == 1) then
       if(x_ini == pos_ini_unset) x_ini = l(1)*0.5_rp
       if(y_ini == pos_ini_unset) y_ini = l(2)*0.5_rp

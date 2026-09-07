@@ -16,7 +16,7 @@ module prt_mod_intgr_nwtn_eulr
                                          radius, &
                                          send_int,send_real, &
                                          r_dtcol,r_dtcoli,rho_s, &
-                                         is_lubrication
+                                         is_lubrication,is_solve_nwtn_eulr
   use prt_mod_intgr_over_sphere  , only: intgr_over_sphere
   use mod_collisions             , only: collisions,lubrication
   !
@@ -211,7 +211,14 @@ module prt_mod_intgr_nwtn_eulr
     coll_toll = 1.0e-8_rp
     maxerror = 1
     sumcolrank_all = 1
-    do while ((iter < itermax) .and. ((sumcolrank_all+npmax*Nproc) /= 0) .and. (maxerror*dli(1) > coll_toll))
+    ! is_solve_nwtn_eulr = .false. keeps the particles fixed: the loop below -- collision
+    ! detection, lubrication and the Newton-Euler update of ep(p)%u..omtheta and
+    ! ep(p)%x..phi -- is then never entered, so ep/op keep their initial values while
+    ! everything outside it (intgr_over_sphere, the force diagnostics and forces_data.csv,
+    ! the master/slave bookkeeping) still runs. The flag is read from the same namelist on
+    ! every rank, so all of them skip the MPI calls inside the loop together.
+    do while (is_solve_nwtn_eulr .and. (iter < itermax) .and. &
+              ((sumcolrank_all+npmax*Nproc) /= 0) .and. (maxerror*dli(1) > coll_toll))
       iter = iter + 1
       !$omp workshare
       colrank(1:npmax) = -1 ! -1 means that particle p is not involved in a collision

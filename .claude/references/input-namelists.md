@@ -144,6 +144,7 @@ Derived automatically: `volp = 4/3 πr³`, `mominert = 2/5 volp r²`.
 | `en` | `0.97` | normal restitution coefficient |
 | `et` | `0.10` | tangential restitution coefficient |
 | `muc` | `0.0` | Coulomb friction coefficient |
+| `is_lubrication` | `.true.` | switch for the unresolved-lubrication correction. `.false.` skips both `call lubrication` sites in `prt_intgr_nwtn_eulr.f90` and leaves only the DEM spring-dashpot. |
 
 Everything else (`kn_ss`, `kt_ss`, `etan_ss`, `etat_ss`, `kn_sw`, …) is
 **derived** in `read_particle_input`:
@@ -156,6 +157,12 @@ with `m_eff = ratiorho·volp/2` (sphere–sphere) or `ratiorho·volp` (sphere–
 The lubrication-model coefficients (`a11_ini_pp`, `a22_sat_pw`, …) are
 compile-time `parameter`s in `prt_param.f90`, keyed off
 `eps_ini_pp=0.025`, `eps_sat_pp=0.001`, `eps_ini_pw=0.075`, `eps_sat_pw=0.001`.
+`eps` is the surface gap normalised by `radius`, so the sphere–wall correction is
+only alive for a gap between `0` and `0.075 r` and saturates below `0.001 r` —
+at a typical 16 cells per diameter that whole range is under one grid cell wide,
+which is exactly the film the IBM cannot resolve. It is switched off during
+overlap (`eps > eps_cut_pw = 0` is required), so it acts on approach and rebound
+but never during contact.
 
 ---
 

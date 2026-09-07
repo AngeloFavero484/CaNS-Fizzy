@@ -15,7 +15,8 @@ module prt_mod_intgr_nwtn_eulr
                                          np,nqmax, &
                                          radius, &
                                          send_int,send_real, &
-                                         r_dtcol,r_dtcoli,rho_s
+                                         r_dtcol,r_dtcoli,rho_s, &
+                                         is_lubrication
   use prt_mod_intgr_over_sphere  , only: intgr_over_sphere
   use mod_collisions             , only: collisions,lubrication
   !
@@ -443,7 +444,7 @@ module prt_mod_intgr_nwtn_eulr
                 ny = deltay/dist
                 nz = deltaz/dist ! computed twice (here and in the subroutine collisions)
                 eps = (dist-2.0_rp*radius)/radius
-                if((eps < eps_ini_pp).and.(eps > eps_cut_pp)) then
+                if((eps < eps_ini_pp).and.(eps > eps_cut_pp).and.is_lubrication) then
                   colrank(p) = myid
                   call lubrication(p,idq,nx,ny,nz,eps, &
                                    anb(q,nb)%u,anb(q,nb)%v,anb(q,nb)%w, &
@@ -574,7 +575,7 @@ module prt_mod_intgr_nwtn_eulr
             nz = deltaz/dist
             qq = 0
             eps = -deltan/radius 
-            if((eps < eps_ini_pw) .and. (eps > eps_cut_pw)) then
+            if((eps < eps_ini_pw) .and. (eps > eps_cut_pw) .and. is_lubrication) then
               colrank(p) = myid
               call lubrication(p,idq,nx,ny,nz,eps, &
                                0.0_rp,0.0_rp,0.0_rp,0.0_rp,0.0_rp,0.0_rp)

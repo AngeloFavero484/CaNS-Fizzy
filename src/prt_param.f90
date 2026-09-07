@@ -63,6 +63,7 @@ module prt_mod_param
   !
   real(rp), protected :: Nstretch,dt_estim,r_dtcoli
   integer,  protected :: r_dtcol
+  logical,  protected :: is_lubrication
   real(rp), protected :: en,et,muc
   ! sphere/sphere (derived from radius/ratiorho, see read_particle_input below)
   real(rp), protected :: colthr_pp
@@ -167,7 +168,7 @@ module prt_mod_param
     integer, intent(in) :: myid
     integer :: iunit,ierr
     namelist /particle/ np,radius,rho_s,ratiorho,u_ini,v_ini,w_ini,x_ini,y_ini,z_ini
-    namelist /collision_parameters/ Nstretch,dt_estim,r_dtcol,en,et,muc
+    namelist /collision_parameters/ Nstretch,dt_estim,r_dtcol,en,et,muc,is_lubrication
 #if defined(_EULER)
     namelist /particle_euler/ eps_sol
 #endif
@@ -190,6 +191,7 @@ module prt_mod_param
     en = 0.97_rp
     et = 0.10_rp
     muc = 0.0_rp
+    is_lubrication = .true.
 #if defined(_EULER)
     eps_sol = 1.5_rp
 #endif

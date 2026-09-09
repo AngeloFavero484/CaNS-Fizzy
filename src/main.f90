@@ -47,6 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
+  use mod_massbal        , only: cmpt_massbal
   use mod_param          , only: small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
@@ -168,6 +169,13 @@ program cans
   !
   integer, parameter :: csv_unit = 5555
   !
+  ! fluid-1 volume budget, written to mass_data.csv (see mod_massbal):
+  ! vol_adv is measured after the interface advection, vol_ext after the
+  ! contact-line relaxation loop, so the drift of each can be attributed.
+  !
+  integer, parameter :: mass_unit = 5556
+  real(rp), dimension(5) :: vol_adv,vol_ext
+  !
   real(rp), allocatable, dimension(:,:,:) :: s
   !
   ! two-fluid solver specific
@@ -195,6 +203,10 @@ program cans
     open(unit=csv_unit, file='forces_data.csv', status='replace', action='write')
     write(csv_unit, '(A)') "Time,F_cap_ibm,F_ibm,F_inertia,F_w,F_bouy,F_cap,ep_z,ep_w"
     flush(csv_unit)
+    open(unit=mass_unit, file='mass_data.csv', status='replace', action='write')
+    write(mass_unit, '(A)') "Time,V_tot_adv,V_out_adv,V_in_adv,V_over_adv,V_under_adv,"// &
+                            "V_tot_ext,V_out_ext,V_in_ext,V_over_ext,V_under_ext"
+    flush(mass_unit)
   endif
   !
   ! read parameter file
@@ -606,6 +618,8 @@ endif
   !
   if(myid == 0) print*, '*** Calculation loop starts now ***'
   is_done = .false.
+  vol_adv(:) = 0._rp
+  vol_ext(:) = 0._rp
   do while(.not.is_done)
 #if defined(_TIMING)
     !$acc wait(1)
@@ -662,6 +676,13 @@ endif
         !
         call initeul(n)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,alphac)
+        !
+        ! fluid-1 volume after the interface advection but before the
+        ! contact-line relaxation. alphac is current here (initeul has just
+        ! rebuilt it), so the inside/outside split matches the band the
+        ! relaxation below is about to write into.
+        !
+        call cmpt_massbal(n,dl,dzf,psi,vol_adv)
         do iter = 1, max_pseudo_iter
           u_ext=0
           v_ext=0
@@ -675,6 +696,10 @@ endif
           call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
           call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         end do
+        !
+        ! ... and after it: vol_ext-vol_adv is what the relaxation injected.
+        !
+        call cmpt_massbal(n,dl,dzf,psi,vol_ext)
         call rot_norm(n,dli,dzci,psi,theta,is_bound,normx,normy,normz,kappa,Fs)
         Fstot_old=Fstot
         call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
@@ -874,6 +899,14 @@ endif
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
       !
+      ! fluid-1 volume budget; written from rank 0, the integrals are already
+      ! MPI_ALLREDUCEd in cmpt_massbal.
+      !
+      if(myid == 0) then
+        write(mass_unit,'(10(E16.8,","),E16.8)') time,vol_adv(1:5),vol_ext(1:5)
+        flush(mass_unit)
+      end if
+      !
 #if !defined(_INTERFACE_CAPTURING_VOF)
       var(1) = 1.*istep
       var(2) = time
@@ -966,6 +999,7 @@ endif
   call fftend(arrplanp)
   if(myid == 0.and.(.not.kill)) print*, '*** Fim ***'
   if(myid == 0) close(csv_unit)
+  if(myid == 0) close(mass_unit)
   call decomp_2d_finalize
   call MPI_FINALIZE(ierr)
 end program cans

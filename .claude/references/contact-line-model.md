@@ -217,9 +217,83 @@ Keep it — it is the documented alternative if the current model misbehaves.
    from `psi` directly (`main.f90:649`). The contact-line normals are therefore
    noisier than the bulk ones.
 
-4. **No `psi` clipping inside the loop.** `advect_vof_upwind` can push `psi`
-   slightly outside `[0,1]`; `clip_field` (in `two_fluid.f90`) is only applied
-   inside `rk_2fl`, before the loop runs.
+4. **No `psi` clipping inside the loop** — but it does not bite at the default
+   settings. `clip_field` (in `two_fluid.f90`) is only applied at the end of
+   `rk_2fl` (`rk.f90:252`), so anything `advect_vof_upwind` writes survives
+   until the *next* step's advection. Measured over 12 Sessile_Drop runs
+   (2026-09-09, see the mass-budget section below), the out-of-range content of
+   `psi` after the relaxation loop is **exactly zero** in every step of every
+   run: first-order upwind at `dtau_cfl = 0.3` is monotone, so it cannot create
+   a new extremum. This would stop holding if `dtau_cfl` were pushed past 1.
+
+5. **The relaxation is a volume source.** See the next section — this is the
+   largest numerical artefact of the model, and it is not round-off.
+
+---
+
+## Mass conservation: what the relaxation does to the fluid volume
+
+Measured 2026-09-09 with `mod_massbal` (`src/massbal.f90`), which writes
+`mass_data.csv` — the fluid-1 volume probed twice per step, after `tm_2fl` and
+after the relaxation loop, split by the solid indicator:
+
+```
+V_tot = sum psi *dV     V_out = sum psi*(1-alphac) *dV     V_in = sum psi*alphac *dV
+```
+
+Sessile_Drop at 16 points per diameter (`ng = 64,64,48`, `l = 16,16,12`,
+`radius = 2`), particle held fixed (`is_solve_nwtn_eulr = F`), `gacc = 0`,
+`alpha_min = 0.5`, over `0 < t < 10`:
+
+| theta | dV_tot | dV_out | V_in(T)/V_particle |
+|---|---|---|---|
+| 30 | **+14.04 %** | +0.348 % | 14.4 % |
+| 60 | +10.19 % | +0.180 % | 10.4 % |
+| 90 | +4.70 % | +0.042 % | 4.9 % |
+| 120 | +1.50 % | -0.022 % | 1.7 % |
+| 150 | +0.14 % | -0.061 % | 0.30 % |
+| 150, `max_pseudo_iter = 0` | -0.018 % | -0.043 % | 0.08 % |
+
+**Read `V_out`, not `V_tot`.** The raw total is not a mass-conservation
+diagnostic in this fork — up to 14 % of it is fluid buried inside the particle,
+where it is not physical. Subtracting it recovers a quantity conserved to a few
+tenths of a percent.
+
+The last row is the control: with the relaxation switched off nothing is
+injected, so `extend.f90` is unambiguously the source. What it injects lands
+almost entirely inside the solid (at theta = 30: 4.836 injected, `V_in(T)` =
+4.809).
+
+### Mechanism
+
+Not overshoot — `psi` stays exactly in `[0,1]` (see behaviour 4 above). The
+source is that `advect_vof_upwind` uses the **advective** form
+`psi -= dtau*(u.grad psi)` on a **masked** band: the upwind stencil reads
+neighbours outside `alphac > alpha_min` that are never debited in return, so
+nothing telescopes and the update has no discrete conservation property. The
+strong theta-dependence follows the wetted fraction of the band — `cot(pi-theta)`
+swings `u_ext` tangential, and a wetting drop covers far more of the shell.
+
+### Bounded vs unbounded
+
+Out to `t = 40` (theta = 30 and 90):
+
+- **`V_in` saturates** — 4.81 -> 5.14 (theta = 30), 1.64 -> 1.92 (theta = 90).
+  Once the diffuse shell has filled it is a one-off offset, not a runaway.
+- **`V_out` does not.** It drifts linearly at `+0.0099 %/t` (theta = 30) and
+  `+0.0098 %/t` (theta = 90) — essentially theta-independent asymptotically,
+  against a `-0.0011 %/t` baseline with the relaxation off. This is the only
+  genuinely unbounded error, and at `t = 100` it is ~1 % of the drop.
+
+### `alpha_min` is not the knob
+
+At theta = 150, sweeping `alpha_min` over 0.1 -> 0.9 moves the residual drift
+only from `-0.011` to `-0.003 %/t` and `V_in` from 0.096 to 0.090. It sets the
+band width; **theta** sets the injection.
+
+All of the above is at 16 points per diameter. The injection is a band-coverage
+effect and the band is a fixed number of cells wide, so it should scale with
+resolution — not yet measured.
 
 ---
 

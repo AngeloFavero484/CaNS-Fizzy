@@ -22,3 +22,6 @@ src/poslfp/data/
 PostPrt/PrtPos/prt_post
 PostPrt/PrtPos/param.dat
 PostPrt/SphereData/data/
+
+# local analysis output, not part of the solver
+studies/

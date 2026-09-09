@@ -226,8 +226,9 @@ Keep it — it is the documented alternative if the current model misbehaves.
    run: first-order upwind at `dtau_cfl = 0.3` is monotone, so it cannot create
    a new extremum. This would stop holding if `dtau_cfl` were pushed past 1.
 
-5. **The relaxation is a volume source.** See the next section — this is the
-   largest numerical artefact of the model, and it is not round-off.
+5. **The relaxation is a volume source, and it pits the cells next to its own
+   band.** The two sections below — these are the largest numerical artefacts of
+   the model, and neither is round-off. They are the same defect.
 
 ---
 
@@ -285,15 +286,88 @@ Out to `t = 40` (theta = 30 and 90):
   against a `-0.0011 %/t` baseline with the relaxation off. This is the only
   genuinely unbounded error, and at `t = 100` it is ~1 % of the drop.
 
-### `alpha_min` is not the knob
+### `alpha_min` is not the knob *for the drift*
 
 At theta = 150, sweeping `alpha_min` over 0.1 -> 0.9 moves the residual drift
 only from `-0.011` to `-0.003 %/t` and `V_in` from 0.096 to 0.090. It sets the
-band width; **theta** sets the injection.
+band width; **theta** sets the injection. (It *is* the knob for the near-wall
+voids — see the next section. The two statements are consistent: `alpha_min`
+barely moves the integrated drift while strongly moving where the error is
+deposited.)
 
-All of the above is at 16 points per diameter. The injection is a band-coverage
-effect and the band is a fixed number of cells wide, so it should scale with
-resolution — not yet measured.
+All of the above is at 16 points per diameter and sigma = 1000. For the
+resolution scaling, and for why `alpha_min` *is* the knob for the near-wall
+voids even though it barely touches the drift, see the next section.
+
+---
+
+## Near-wall nucleation: the same defect, seen locally
+
+Measured 2026-09-09; runs and scripts in `studies/contact-line-2026-09-09/`
+(gitignored). Spurious depressions in `psi` appear in the fluid on the
+drop–sphere surface — reported as "nucleation", clearest at high resolution.
+
+They are **not a separate problem**. They are the *donor cells*: the fluid cells
+immediately outside `alphac > alpha_min`, which `advect_vof_upwind`'s upwind
+stencil reads but never updates. The mass budget sees the net transfer as a
+volume source; the pitting is the same transfer seen locally.
+
+The pairing is explicit in the raw field — at a void, `psi = 0.88-0.90` with
+`alphac = 0.00-0.31` (outside the band), while the band cells directly beneath
+at `alphac = 0.60-1.00` sit full at `psi ~ 1.00`.
+
+Sessile_Drop, theta = 30, sigma = 100, particle fixed, `t ~ 12`. "voids" counts
+majority-fluid cells (`alphac < 0.5`) with `psi < 0.95` that still have bulk drop
+(`psi > 0.98`) further out — the qualifier matters, or the drop's own free
+surface and the solid interior both register as voids:
+
+| D/delta | `alpha_min` | voids | worst dip | dV_out | dV_tot | V_in |
+|---|---|---|---|---|---|---|
+| 16 | 0.5 | 188 | 0.177 | +0.256 % | +6.64 % | 2.34 |
+| 32 | 0.5 | 82 | 0.256 | +0.291 % | +2.70 % | 0.91 |
+| 16 | 0.1 | **0** | — | +2.77 % | +13.65 % | 4.18 |
+| 32 | 0.1 | **338** | 0.888 | +1.26 % | +5.54 % | 1.61 |
+
+### `alpha_min` moves both, in opposite directions
+
+Narrow the band and the injection falls but the donor cells pit; widen it and
+the pitting goes but the solid floods. **`max_pseudo_iter` (1 vs 5) and
+`dtau_cfl` (0.1 vs 0.3) change the void integral by under 5 %** — it is the
+band-edge geometry, not the strength of the relaxation. This is the sharpest
+evidence that the two artefacts are one defect: one knob, two symptoms,
+opposite signs.
+
+### Refinement concentrates the error, it does not remove it
+
+At `alpha_min = 0.5`, going 16 -> 32 points makes the worst dip *deeper*
+(0.177 -> 0.256) and `V_out` slightly *worse* (+0.256 -> +0.291 %). Only `V_in`
+improves (2.34 -> 0.91), and only because the band is a fixed number of *cells*,
+so its physical volume halves. Hence the phenomenon reads more clearly at
+D/delta = 32: the same error packed into a thinner ring.
+
+### Do not "fix" it with a low `alpha_min`
+
+`alpha_min = 0.1` gives exactly zero voids at 16 points out to `t = 38.5`, and
+holds at 32 points only to `t ~ 10` — then the drop bridges and traps a gas
+pocket (`psi` down to 0.11, void integral 2.23) worse than the pitting it
+replaced. Low `alpha_min` relocates the defect from pitting to bridging; which
+one shows up depends on resolution and run length. There is no setting of
+`alpha_min` that removes it.
+
+### Still open
+
+Whether the depressions are written directly by the relaxation or are
+capillary-mediated through spurious curvature (`cmpt_norm_curv` runs on the
+relaxed `psi`, so a non-physical profile feeds `sigma*kappa*grad psi`). A
+`sigma = 0` run cannot separate them: with no surface tension the drop never
+wets, so there is no contact region to pit.
+
+### The fix, for both
+
+Flux form — `psi -= dtau * div(u_ext * psi)` — with a band edge where donor and
+receiver cells are always updated as a pair. That removes the volume source and
+the donor-cell pitting together, because they are the same missing pairing.
+Not attempted.
 
 ---
 
@@ -305,7 +379,7 @@ resolution — not yet measured.
 | `eps_sol` | `input.nml` `&particle_euler` | width of the diffuse solid shell in cells → width of the contact-line band |
 | `max_pseudo_iter` | `input.nml` `&contact_line` | default `5`. More = stronger enforcement, more round-off |
 | `dtau_cfl` | `input.nml` `&contact_line` | default `0.3`; `dtau = dtau_cfl/maxval(dli)`, a CFL number on the smallest cell |
-| `alpha_min` | `input.nml` `&contact_line` | default `0.5`, the relaxation band threshold |
+| `alpha_min` | `input.nml` `&contact_line` | default `0.5`, the relaxation band threshold. **Do not tune to chase the near-wall voids** — it trades them for flooding/bridging, see above |
 
 All five are runtime inputs. The last three used to be hard-coded — in
 `main.f90` (`max_pseudo_iter`, `dtau`) and `extend.f90` (`alpha_min`) — and were

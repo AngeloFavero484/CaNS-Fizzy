@@ -82,14 +82,6 @@ real(rp), protected               :: rho0 ! not an input
 integer , protected               :: max_pseudo_iter
 real(rp), protected               :: dtau_cfl
 real(rp), protected               :: alpha_min
-!
-! fraction of the band width over which the relaxation ramps up from zero at
-! the outer edge alphac = alpha_min. 0 restores the hard on/off mask the band
-! used to have; 1 ramps across the whole band. See mod_extend -- the ramp is
-! there to keep cmpt_norm_curv from differentiating across a kink at the band
-! edge, which is what drives the near-wall nucleation.
-!
-real(rp), protected               :: alpha_ramp
 #if defined(_OPENACC)
 !
 ! cuDecomp input parameters
@@ -133,7 +125,7 @@ contains
                   ka12,cp12,beta12, &
                   psi_thickness_factor
     namelist /contact_line/ &
-                  max_pseudo_iter,dtau_cfl,alpha_min,alpha_ramp
+                  max_pseudo_iter,dtau_cfl,alpha_min
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -176,11 +168,6 @@ contains
     ! so an input.nml without a &contact_line group behaves exactly as before
     !
     max_pseudo_iter = 5; dtau_cfl = 0.3_rp; alpha_min = 0.5_rp
-    !
-    ! alpha_ramp is new behaviour, not a restored hard-coded value: set it to
-    ! 0. to reproduce the hard band edge runs from before it existed used
-    !
-    alpha_ramp = 1._rp
     !
     ! read input file
     !

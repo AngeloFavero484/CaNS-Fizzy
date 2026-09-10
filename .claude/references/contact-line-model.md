@@ -268,10 +268,15 @@ difference of `V_out_adv` between consecutive rows.
    `F_cap` column of `forces_data.csv`** — values from before that date are not
    comparable with values after it.
 
-3. **Normals inconsistency.** The main phase-field step computes normals from
-   `phi` (the SDF) under `_SDF_NORMALS`, but the pseudo-loop recomputes them
-   from `psi` directly (`main.f90:649`). The contact-line normals are therefore
-   noisier than the bulk ones.
+3. **Normals inconsistency — worse than it reads.** The main phase-field step
+   computes normals and curvature from `phi` (the SDF) under `_SDF_NORMALS`,
+   and then the pseudo-loop recomputes them from `psi` directly, with no guard.
+   `cmpt_norm_curv_youngs` (`two_fluid.f90:81`) loops the **whole domain**, so
+   this is not a local effect: whenever the contact-line relaxation runs,
+   `_SDF_NORMALS` is discarded everywhere and every `kappa` in the momentum
+   equation is a Youngs difference of the raw VOF field. `build.conf` sets
+   `SDF_NORMALS=1`; the loop throws it away. Leading suspect for the
+   nucleation — see `planned-changes.md` item 2.
 
 4. **No `psi` clipping inside the loop** — but it does not bite at the default
    settings. `clip_field` (in `two_fluid.f90`) is only applied at the end of
@@ -283,9 +288,9 @@ difference of `V_out_adv` between consecutive rows.
    a new extremum. This would stop holding if `dtau_cfl` were pushed past 1.
 
 5. **The relaxation is a volume source, and it pits the cells next to its own
-   band.** The two sections below are the study of both. The pitting is now
-   addressed by the `alpha_ramp` band-edge smoothing (below, not yet
-   evaluated); the integrated volume error is currently **not** corrected.
+   band.** The two sections below are the study of both. **Neither is fixed in
+   `HEAD`** — see the reverted-attempts sections below and
+   `planned-changes.md`.
 
 ---
 
@@ -468,60 +473,54 @@ nucleation. It is a live option to revisit — most plausibly combined with a
 smoothed band edge (see above), which would fix the curvature that is the
 actual cause of the pitting — but on its own it trades one problem for another.
 
-**What is in the code now: a smoothed band edge** (`alpha_ramp`), which targets
-the curvature that actually causes the pitting. See the next section. The
-volume error is currently **not** corrected — `crrct_vout` was implemented and
-then reverted, and is documented below in case it comes back.
+**Nothing is in the code now.** The band-edge smoothing (`alpha_ramp`) and the
+volume projection (`crrct_vout`) were both implemented and both reverted; each
+is documented below with what it measured. `HEAD` carries only the `extend.f90`
+/ `rotnorm.f90` hygiene fixes, so the volume drift and the nucleation are both
+still present. Next steps are in `planned-changes.md` items 2 and 3.
 
 ---
 
-## `alpha_ramp`: smoothing the band edge (current)
+## `alpha_ramp`: tried and reverted — and the rule it taught us
 
-`src/extend.f90`, `advect_vof_upwind`. The update is weighted by `wgt(alphac)`,
-which rises smoothly from 0 at the outer band edge to 1 at
-`alphac = alpha_min + alpha_ramp*(1-alpha_min)`:
+Implemented `dfc55b1`, reverted. It weighted the relaxation update by a quintic
+smootherstep in `alphac`, ramping up from the outer band edge, on the theory
+that the hard on/off mask left a kink for `cmpt_norm_curv` to differentiate.
 
-```
-x   = min((alphac - alpha_min)/(alpha_ramp*(1-alpha_min)), 1)
-wgt = 6x^5 - 15x^4 + 10x^3          ! quintic smootherstep
-```
+**It did not change the nucleation at `alpha_ramp = 1`.** User-verified.
 
-`alpha_ramp` is in `&contact_line`, default `1.`. **`alpha_ramp = 0` restores
-the old hard on/off mask exactly** — verified bit-identical on a 300-step
-Sessile_Drop run.
+It could not have. The update is `psi -= w*dtau*(u_ext.grad psi)`, and any
+positive scalar `w` multiplying the whole right-hand side has fixed point
+`u_ext.grad psi = 0` — **the same fixed point as `w = 1`**. `psi` persists
+across timesteps, so the relaxation is near-converged and `w` changes only the
+convergence rate, never the converged field.
 
-This is a **smoothness** knob, not a strength one. It exists because of the
-diagnosis above: the hard mask relaxed cells just inside `alpha_min` and not
-those just outside, leaving a kink in the field that `cmpt_norm_curv`
-differentiates twice, and the spurious `kappa` that results is what drives the
-pitting. The quintic is the lowest order that helps: its first *and* second
-derivatives vanish at both ends, and `kappa` needs the second derivative
-continuous. Linear or cubic would still leave a jump in `kappa`.
+### The rule, which covers the whole 2026-09-09 knob sweep
 
-| `alphac` | `wgt`, `alpha_ramp=1` | `wgt`, `alpha_ramp=0.5` |
+| knob | what it is | effect on the converged field |
 |---|---|---|
-| 0.55 | 0.009 | 0.058 |
-| 0.65 | 0.163 | 0.683 |
-| 0.75 | 0.500 | 1.000 |
-| 0.90 | 0.942 | 1.000 |
+| `max_pseudo_iter` | rate | none |
+| `dtau_cfl` | rate | none |
+| `alpha_ramp` | rate | none — measured |
+| `alpha_min` | geometry | the only one that moves the voids |
 
-### The trade-off to watch when sweeping it
+This is why 1 vs 5 iterations and 0.1 vs 0.3 CFL moved the void integral by
+under 5 %, and why `alpha_min` was the only knob that ever did anything. The
+sweep was measuring convergence rate, not the defect.
 
-`alpha_ramp = 1` damps the whole outer half of the band, so the extension is
-imposed mostly deep in the solid — that is a real reduction in how hard theta is
-enforced, the same failure mode the `psi_cl` build had. Lowering `alpha_ramp`
-towards 0 restores enforcement strength but sharpens the edge again. **Sweep it
-against both the void count and the measured apparent angle, not just one.**
-`alpha_ramp` and `alpha_min` interact: `alpha_min` sets where the taper starts,
-`alpha_ramp` how long it is.
+**Do not propose anything that only scales the relaxation.** To change the
+converged field you have to change either the geometry of the region it acts on
+or the *direction* of `u_ext` — at steady state `u_ext.grad psi = 0` means the
+`psi` isosurfaces contain `u_ext`, so direction is what sets the interface
+orientation. See `planned-changes.md` item 3.
 
-### Not yet evaluated
+### What is now the leading suspect
 
-The void measurement needs the study configuration on the cluster at `t ~ 12`;
-the shipped example is unusable for it (see below). All that is verified
-locally is that `alpha_ramp = 0` reproduces the hard edge bit-for-bit, that
-`alpha_ramp = 1` runs 300 steps, and that it does **not** change the V_out
-drift — expected, since the ramp targets curvature and not volume.
+The relaxation loop discards the SDF-based curvature domain-wide and replaces
+it with a Youngs difference of the raw VOF field, so `_SDF_NORMALS` is
+effectively off whenever the contact line is active. Since `psi_cl` proved the
+voids are driven *through* `kappa`, that is where to look next. Full write-up
+and the proposed change in `planned-changes.md` item 2.
 
 ---
 
@@ -575,7 +574,6 @@ switch. Past step ~25 every number above is contaminated, `dt` has collapsed so
 | `max_pseudo_iter` | `input.nml` `&contact_line` | default `5`. More = stronger enforcement, more round-off |
 | `dtau_cfl` | `input.nml` `&contact_line` | default `0.3`; `dtau = dtau_cfl/maxval(dli)`, a CFL number on the smallest cell |
 | `alpha_min` | `input.nml` `&contact_line` | default `0.5`, the relaxation band threshold. **Do not tune to chase the near-wall voids** — it trades them for flooding/bridging, see above |
-| `alpha_ramp` | `input.nml` `&contact_line` | default `1.`. Fraction of the band width over which the relaxation ramps up from the outer edge. `0` restores the old hard mask exactly |
 
 All five are runtime inputs. The last three used to be hard-coded — in
 `main.f90` (`max_pseudo_iter`, `dtau`) and `extend.f90` (`alpha_min`) — and were

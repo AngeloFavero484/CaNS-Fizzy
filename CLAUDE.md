@@ -86,16 +86,20 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
   relaxation loop (`src/extend.f90`), which runs unconditionally every timestep in
   cells with `0 < alphac < 1`. It is ~15 orders below anything physical. Clip with
   `where(abs(psi) < 1e-12) psi = 0._rp` only if it pollutes a diagnostic.
-- **The band edge is smoothed** by `alpha_ramp` (`&contact_line`, default `1.`):
-  the relaxation ramps up over a quintic smootherstep from the outer edge
-  instead of switching on hard. That targets the spurious `kappa` behind the
-  nucleation. `alpha_ramp = 0` restores the old hard mask bit-for-bit.
-  **Not yet evaluated** — the void count needs a cluster run at `t ~ 12`.
-- **The V_out drift is currently NOT corrected.** `crrct_vout` (a projection
-  that removes the relaxation's injection each step) was implemented in
-  `3ab76ac` and reverted; it is documented in
-  `.claude/references/contact-line-model.md` in case it comes back. Do not
-  re-derive it.
+- **Neither the volume drift nor the nucleation is fixed in the code.** Three
+  attempts were implemented and all three reverted — `psi_cl` (`f45d41a`),
+  `crrct_vout` (`3ab76ac`), `alpha_ramp` (`dfc55b1`). Each is written up with
+  its measurements in `.claude/references/contact-line-model.md`; **do not
+  re-derive any of them**. `HEAD` carries only the `extend.f90` / `rotnorm.f90`
+  hygiene fixes. The next two things to try are `planned-changes.md` items 2
+  and 3 — do not implement them unasked.
+- **Nothing that only scales the relaxation can work.** `advect_vof_upwind` is
+  `psi -= w*dtau*(u_ext.grad psi)`; any positive scalar `w` has the same fixed
+  point as `w = 1`, and the relaxation is near-converged because `psi` persists
+  across steps. So `max_pseudo_iter`, `dtau_cfl` and `alpha_ramp` are all rate
+  knobs with no effect on the converged field — which is the whole explanation
+  of the 2026-09-09 sweep. Only `alpha_min` (geometry) and the *direction* of
+  `u_ext` move it.
 - **The near-wall nucleation is capillary-mediated, not written by the
   relaxation.** Settled 2026-09-10: in the `psi_cl` build (`f45d41a`) the
   relaxation cannot write `psi` at all and the voids were unchanged. The cause

@@ -241,3 +241,124 @@ against `F_buoy` — note that the buoyancy term keeps using the staggered
 `intrhox/y/z`, and should: each momentum component wants the mass on its own
 control volume. `intrhoc` is for the scalar density ratio only, not a
 replacement for them.
+
+---
+
+## 2. Recompute the curvature from `phi`, not `psi`, inside the relaxation loop
+
+*Raised 2026-09-10, after `alpha_ramp` failed. Code untouched — this is the next
+thing to try for the near-wall nucleation.*
+
+### The defect
+
+`main.f90:663` computes normals and curvature the way `build.conf` asks:
+
+```fortran
+#if defined(_SDF_NORMALS)
+        call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+```
+
+Three lines later the relaxation loop does, with no guard,
+
+```fortran
+          call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+```
+
+and `cmpt_norm_curv_youngs` (`two_fluid.f90:81`) loops `1..n` — the **whole
+domain**, not the band. So every step the SDF-based curvature is computed and
+then overwritten by a Youngs difference of the raw VOF field, everywhere, and
+that is the `kappa` that reaches `sigma*kappa*grad psi`.
+
+**With the contact-line relaxation running, `SDF_NORMALS=1` has no effect.**
+`build.conf` sets it; the loop discards it. This is listed as "known behaviour
+3, normals inconsistency" in `contact-line-model.md`, which describes it as
+making the contact-line normals noisier than the bulk ones — that undersells
+it. There are no SDF normals left anywhere in the domain.
+
+### Why it is the leading suspect for the nucleation
+
+The `psi_cl` build proved the voids are driven **through `kappa`**, not written
+into `psi` (see `contact-line-model.md`). And `kappa` is being produced by the
+noisy method the build was explicitly configured to avoid. It also matches the
+resolution behaviour: Youngs-on-sharp-VOF curvature does not converge under
+refinement, which is why the worst dip got *deeper* going D/delta 16 -> 32.
+
+### The change
+
+Inside the pseudo-loop, under the same guard as the rest of the code:
+
+```fortran
+#if defined(_SDF_NORMALS)
+          call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+          call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+#else
+          call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+#endif
+```
+
+Both loop sites need it (`main.f90` startup block and time loop).
+
+### Two things that could sink it
+
+- `compute_uextend` builds `u_ext` from `normx/y/z`. Switching those to
+  SDF-based changes the extension direction as well, so this is a model change,
+  not only a diagnostic one.
+- `vof_thinc_cmpt_phi` assumes `psi` is a genuine THINC volume fraction. The
+  relaxed `psi` is a smeared advected field, so the reconstruction may be
+  ill-defined in exactly the band that matters. If `phi` comes back garbage in
+  the band, this fails for that reason and the result is worse, not better.
+
+Cost: one extra `vof_thinc_cmpt_phi` per pseudo-iteration, so `max_pseudo_iter`
+of them per step.
+
+---
+
+## 3. Fallback if 2 fails: blend the extension *direction*, not its magnitude
+
+*Raised 2026-09-10. Only attempt this if 2 does not clear the voids.*
+
+### The rule that kills the easy fixes
+
+`advect_vof_upwind` is `psi -= w*dtau*(u_ext.grad psi)`. Any positive scalar
+`w` multiplying the whole right-hand side has fixed point
+`u_ext.grad psi = 0` — **the same fixed point as `w = 1`**. Since `psi`
+persists across timesteps the relaxation is near-converged, so any such `w`
+changes only the convergence rate, never the converged field.
+
+That is one statement covering the whole 2026-09-09 knob sweep:
+
+| knob | what it is | effect on the converged field |
+|---|---|---|
+| `max_pseudo_iter` | rate | none |
+| `dtau_cfl` | rate | none |
+| `alpha_ramp` (tried, `dfc55b1`, reverted) | rate | none — **measured**, voids unchanged |
+| `alpha_min` | geometry | the only one that moves the voids |
+
+**Do not propose anything that only scales the relaxation.** It cannot work,
+and the sweep that appeared to leave `max_pseudo_iter` and `dtau_cfl` as open
+knobs was measuring convergence rate, not the defect.
+
+### What does change the fixed point
+
+At steady state `u_ext.grad psi = 0` means the `psi` isosurfaces **contain**
+`u_ext`, so the interface orientation in the band is set entirely by `u_ext`'s
+*direction*. The kink at the band edge is that this direction jumps: inside,
+the target is "angle theta to the wall"; outside, the interface keeps whatever
+orientation the flow gave it. Blending the direction removes the jump.
+
+In `compute_uextend` the construction is `u_ext = n_wall +/- cot_theta*n2`, and
+`c = n_int.n2` is already available. The vector perpendicular to `n_int` in the
+`(n_wall, n2)` plane — i.e. tangent to the *existing* interface, for which the
+relaxation is a no-op — has components `(-c, n_int.n_wall)` in that basis. So
+
+```
+u_ext = normalise( (1-wgt)*t_phys + wgt*u_theta )
+```
+
+with `wgt` the same quintic smootherstep in `alphac`, rotates continuously from
+"do nothing" at the band edge to the full theta construction deep in the band.
+Unlike the magnitude ramp, this **does** move the fixed point.
+
+Expect it to weaken how hard theta is enforced, for the same reason `psi_cl`
+did: less of the band is imposing the angle. Sweep against the apparent angle
+as well as the void count.

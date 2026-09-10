@@ -8,7 +8,7 @@ module mod_rotnorm
   !
   use mpi
   use mod_types
-  use mod_param         , only: pi,sigma
+  use mod_param         , only: pi,sigma,alpha_min
 #if defined(_PARTICLE)
     use prt_mod_common    , only: alphac,norm_partx,norm_party,norm_partz
 #endif
@@ -83,7 +83,10 @@ module mod_rotnorm
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
-            if (alphac(i,j,k)>0._rp .and. alphac(i,j,k)<1._rp ) then
+            ! same band as the relaxation in mod_extend -- the capillary
+            ! force has to be integrated over the shell the contact angle is
+            ! actually imposed on, not over the whole diffuse solid layer
+            if (alphac(i,j,k)>alpha_min .and. alphac(i,j,k)<1._rp ) then
               psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
               psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
               psiyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
@@ -122,7 +125,7 @@ module mod_rotnorm
               ty = normz(i,j,k)*vecti - normx(i,j,k)*vectk
               tz = normx(i,j,k)*vectj - normy(i,j,k)*vecti
               !
-              norm_t = sqrt(tx**2 + ty**2 + tz**2) + epsilon(1._rp)
+              norm_t = max(sqrt(tx**2 + ty**2 + tz**2),epsilon(1._rp))
               !
               tx = tx / norm_t
               ty = ty / norm_t

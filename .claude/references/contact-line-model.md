@@ -197,6 +197,60 @@ Keep it — it is the documented alternative if the current model misbehaves.
 
 ---
 
+## The extension as a boundary condition (`psi_cl`, 2026-09-10)
+
+`main.f90` allocates `psi_cl` alongside `psi`. Three things define it:
+
+- **Seeded once**, in the startup block before the time loop, from
+  `psi_cl = psi` followed by
+  `n_seed = max(max_pseudo_iter, ceiling(3*eps_sol/dtau_cfl))` pseudo-iterations
+  — enough pseudo-time to cross the whole band from scratch (the extension
+  advances `dtau_cfl` cells per iteration; the band is ~`eps_sol` cells wide).
+  This also covers restarts: `psi` comes from the checkpoint and `psi_cl` is
+  rebuilt from it, so `psi_cl` is **not** in the checkpoint.
+- **Persistent.** Each step only the part *outside* the band is re-seeded,
+  `where alphac <= alpha_min: psi_cl = psi`. Inside the band the previous
+  step's extension is kept, so `max_pseudo_iter` iterations per step only have
+  to follow the interface's motion — same cost and same convergence as before.
+- **Host-only**, like the rest of the contact-line path: `mod_extend` and
+  `mod_rotnorm` carry no `!$acc` and `alphac` is in no device data region, so
+  `psi_cl` deliberately carries none either and is not in an `enter data`.
+
+`advect_vof_upwind`, `cmpt_norm_curv` inside the loop, and `rot_norm` all take
+`psi_cl`. `psi` is untouched between the two `cmpt_massbal` probes.
+
+### What changed physically
+
+`rho`, `mu` and the transported `psi` are now the *un-extended* field — the
+extension no longer bleeds into the fluid properties. The angle is enforced
+*dynamically* (unbalanced `sigma*kappa*grad psi` drives the interface until the
+extended field is a smooth continuation, which happens at theta) rather than
+*kinematically* (psi dragged to the angle). The fixed point should be the same;
+**the equilibrium apparent angle has not yet been re-measured** — that is the
+outstanding validation, a theta sweep on Sessile_Drop out to `t ~ 10`.
+
+### What was verified (2026-09-10, local, Sessile_Drop 64x64x48, sigma = 1000)
+
+- `V_out_ext - V_out_adv = 0` and `V_tot_ext - V_tot_adv = 0` **bit-for-bit**,
+  every step. The relaxation is exactly volume-preserving by construction.
+- theta = 150, 30 steps: whole-step `dV_out` `-0.146 %` -> `-0.064 %`,
+  `dV_tot` `-0.641 %` -> `-0.063 %`, `V_in` frozen (`17.82 -> 17.25` becomes
+  `19.75 -> 19.74`).
+- theta = 30, matched step count: the relaxation's injection into `V_out` goes
+  from `+1.5e-2` to exactly `0`. The baseline aborted on divergence at step 30
+  in this example configuration; the new version ran 300 steps. Not claimed as
+  a stability fix — the flow differs.
+- **A residual `V_out` drift remains** (`-0.98 %` by `t = 0.26` at theta = 30,
+  in the violent initial transient). It is *not* the extension: it is THINC
+  transport plus `clip_field` losing psi into the solid. That is now the next
+  thing to measure, on a settled drop rather than a startup transient.
+
+The `V_out_adv` / `V_out_ext` column pair in `mass_data.csv` is kept as the
+regression check on the bit-for-bit invariance. The whole-step drift is the
+difference of `V_out_adv` between consecutive rows.
+
+---
+
 ## Known numerical behaviours
 
 1. **`psi ≈ 1e-16` noise around the particle.** Machine epsilon injected by the
@@ -207,10 +261,12 @@ Keep it — it is the documented alternative if the current model misbehaves.
    `where(abs(psi) < 1e-12) psi = 0._rp` only if it pollutes a diagnostic.
    *Would stop being negligible under `SINGLE_PRECISION=1`* (`~1e-7`).
 
-2. **Band mismatch.** `extend.f90` uses `alphac > alpha_min` (default `0.5`),
-   `rotnorm.f90` uses `alphac > 0`. The force is integrated over a wider shell
-   than the one the interface is relaxed on. Lowering `alpha_min` narrows the
-   gap; `rotnorm.f90`'s threshold is still hard-coded.
+2. **Band mismatch — fixed 2026-09-10.** `rotnorm.f90` used a hard-coded
+   `alphac > 0` while `extend.f90` uses `alphac > alpha_min`, so the capillary
+   force was integrated over a wider shell than the one the interface is
+   relaxed on. `rotnorm.f90` now uses `alpha_min` too. **This changes the
+   `F_cap` column of `forces_data.csv`** — values from before that date are not
+   comparable with values after it.
 
 3. **Normals inconsistency.** The main phase-field step computes normals from
    `phi` (the SDF) under `_SDF_NORMALS`, but the pseudo-loop recomputes them
@@ -226,9 +282,11 @@ Keep it — it is the documented alternative if the current model misbehaves.
    run: first-order upwind at `dtau_cfl = 0.3` is monotone, so it cannot create
    a new extremum. This would stop holding if `dtau_cfl` were pushed past 1.
 
-5. **The relaxation is a volume source, and it pits the cells next to its own
-   band.** The two sections below — these are the largest numerical artefacts of
-   the model, and neither is round-off. They are the same defect.
+5. **The relaxation *was* a volume source that also pitted the cells next to
+   its own band.** The two sections below record that study. Both symptoms are
+   removed at the source by the `psi_cl` change (2026-09-10) — the relaxation
+   can no longer write the transported `psi` at all. Read those sections as the
+   diagnosis that motivated the change, not as current behaviour.
 
 ---
 
@@ -354,7 +412,7 @@ replaced. Low `alpha_min` relocates the defect from pitting to bridging; which
 one shows up depends on resolution and run length. There is no setting of
 `alpha_min` that removes it.
 
-### Still open
+### Still open — now decidable
 
 Whether the depressions are written directly by the relaxation or are
 capillary-mediated through spurious curvature (`cmpt_norm_curv` runs on the
@@ -362,12 +420,25 @@ relaxed `psi`, so a non-physical profile feeds `sigma*kappa*grad psi`). A
 `sigma = 0` run cannot separate them: with no surface tension the drop never
 wets, so there is no contact region to pit.
 
-### The fix, for both
+Since 2026-09-10 the relaxation cannot write `psi` at all, so **one run answers
+it**: if the pitting survives on `psi`, it was capillary-mediated through
+`kappa`; if it vanishes, it was written directly. Not yet run.
 
-Flux form — `psi -= dtau * div(u_ext * psi)` — with a band edge where donor and
-receiver cells are always updated as a pair. That removes the volume source and
-the donor-cell pitting together, because they are the same missing pairing.
-Not attempted.
+### The fix, for both — applied 2026-09-10
+
+**Not** the flux form. `psi -= dtau*div(u_ext*psi)` with a paired band edge
+conserves `sum_band psi`, which is the wrong integral: `u_ext` points into the
+solid, so the relaxation moves `psi` toward higher `alphac` where the weight
+`(1-alphac)` is smaller, and closing the band edge means the debit comes from
+the fluid-side band cells. `V_out` would then *decrease* at comparable
+magnitude — the sign flips, the drift does not go away. That earlier proposal
+is superseded; do not implement it.
+
+What was done instead: **the relaxation no longer touches the transported
+`psi`.** It runs on `psi_cl`, a persistent copy, and the prescribed angle
+reaches the flow only through `normx/y/z` and `kappa` — the extension became a
+boundary condition on the normals rather than a source term on the volume
+fraction. See the section "The extension as a boundary condition" below.
 
 ---
 

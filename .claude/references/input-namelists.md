@@ -99,15 +99,15 @@ imposes `theta` at the particle surface (see
 [`contact-line-model.md`](contact-line-model.md)). They were hard-coded until
 they were promoted to the namelist; **the defaults of the first three are
 exactly the old hard-coded values**, so an `input.nml` without this group keeps
-the relaxation itself behaving as before. `is_crrct_vout` is the exception —
-it is new behaviour and defaults *on*.
+the relaxation itself behaving as before. `alpha_ramp` is the exception — it is
+new behaviour and defaults *on* (set it to `0.` for the old hard band edge).
 
 | parameter | default | meaning |
 |---|---|---|
 | `max_pseudo_iter` | `5` | relaxation iterations per timestep. More = stronger enforcement of `theta`, but more of the machine-epsilon `psi` round-off noted in `contact-line-model.md`. |
 | `dtau_cfl` | `0.3` | pseudo-timestep as a CFL number on the smallest cell: `dtau = dtau_cfl/maxval(dli)`. `u_ext` is a unit vector, so this is a true CFL. Raising it past ~0.5 risks the upwind advection going unstable. |
 | `alpha_min` | `0.5` | lower edge of the `alphac` band the relaxation acts on (band is `alpha_min < alphac < 1`). Applies to `compute_uextend` and `advect_vof_upwind` in `extend.f90`, and since 2026-09-10 to `rot_norm` in `rotnorm.f90` as well, which must all agree. |
-| `is_crrct_vout` | `T` | project the V_out the relaxation injects back out of the fluid each step (`crrct_vout` in `massbal.f90`). Set `F` to reproduce runs from before 2026-09-10. |
+| `alpha_ramp` | `1.` | fraction of the band width over which the relaxation ramps up from zero at the outer edge `alpha_min`, as a quintic smootherstep. A **smoothness** knob, not a strength one: the hard edge it replaces left a kink that `cmpt_norm_curv` differentiated into spurious `kappa`, which drives the near-wall nucleation. `0.` restores the hard edge exactly. Note `1.` damps the whole outer half of the band, which also weakens how hard `theta` is enforced — sweep it against the apparent angle as well as the void count. |
 
 `rotnorm.f90` used to integrate the capillary force over a hard-coded
 `alphac > 0` — a wider shell than the relaxation band. It now uses `alpha_min`

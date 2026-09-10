@@ -283,10 +283,9 @@ difference of `V_out_adv` between consecutive rows.
    a new extremum. This would stop holding if `dtau_cfl` were pushed past 1.
 
 5. **The relaxation is a volume source, and it pits the cells next to its own
-   band.** The two sections below are the study of both. The *integrated*
-   volume error is now taken back out each step by `crrct_vout`
-   (`is_crrct_vout`, default on); the pitting is untouched and is still
-   current behaviour.
+   band.** The two sections below are the study of both. The pitting is now
+   addressed by the `alpha_ramp` band-edge smoothing (below, not yet
+   evaluated); the integrated volume error is currently **not** corrected.
 
 ---
 
@@ -469,84 +468,100 @@ nucleation. It is a live option to revisit — most plausibly combined with a
 smoothed band edge (see above), which would fix the curvature that is the
 actual cause of the pitting — but on its own it trades one problem for another.
 
-**What is in the code now: an explicit projection.** See the next section. It
-keeps the kinematic enforcement (`psi` is still written, so the angle is held
-as it always was) and removes the volume error afterwards.
+**What is in the code now: a smoothed band edge** (`alpha_ramp`), which targets
+the curvature that actually causes the pitting. See the next section. The
+volume error is currently **not** corrected — `crrct_vout` was implemented and
+then reverted, and is documented below in case it comes back.
 
 ---
 
-## `crrct_vout`: restoring V_out by projection (2026-09-10, current)
+## `alpha_ramp`: smoothing the band edge (current)
 
-`src/massbal.f90`, called from `main.f90` after the relaxation loop and after
-the seeding loop, under the runtime switch `is_crrct_vout` (`&contact_line`,
-default `T`).
+`src/extend.f90`, `advect_vof_upwind`. The update is weighted by `wgt(alphac)`,
+which rises smoothly from 0 at the outer band edge to 1 at
+`alphac = alpha_min + alpha_ramp*(1-alpha_min)`:
 
-The relaxation stays exactly as it was — it still writes `psi`, still injects.
-The injection is then measured and taken straight back out. `cmpt_massbal`
-already brackets the loop, so `dvol = vol_ext(2) - vol_adv(2)` is the V_out the
-relaxation just created. `crrct_vout` removes it by solving
+```
+x   = min((alphac - alpha_min)/(alpha_ramp*(1-alpha_min)), 1)
+wgt = 6x^5 - 15x^4 + 10x^3          ! quintic smootherstep
+```
+
+`alpha_ramp` is in `&contact_line`, default `1.`. **`alpha_ramp = 0` restores
+the old hard on/off mask exactly** — verified bit-identical on a 300-step
+Sessile_Drop run.
+
+This is a **smoothness** knob, not a strength one. It exists because of the
+diagnosis above: the hard mask relaxed cells just inside `alpha_min` and not
+those just outside, leaving a kink in the field that `cmpt_norm_curv`
+differentiates twice, and the spurious `kappa` that results is what drives the
+pitting. The quintic is the lowest order that helps: its first *and* second
+derivatives vanish at both ends, and `kappa` needs the second derivative
+continuous. Linear or cubic would still leave a jump in `kappa`.
+
+| `alphac` | `wgt`, `alpha_ramp=1` | `wgt`, `alpha_ramp=0.5` |
+|---|---|---|
+| 0.55 | 0.009 | 0.058 |
+| 0.65 | 0.163 | 0.683 |
+| 0.75 | 0.500 | 1.000 |
+| 0.90 | 0.942 | 1.000 |
+
+### The trade-off to watch when sweeping it
+
+`alpha_ramp = 1` damps the whole outer half of the band, so the extension is
+imposed mostly deep in the solid — that is a real reduction in how hard theta is
+enforced, the same failure mode the `psi_cl` build had. Lowering `alpha_ramp`
+towards 0 restores enforcement strength but sharpens the edge again. **Sweep it
+against both the void count and the measured apparent angle, not just one.**
+`alpha_ramp` and `alpha_min` interact: `alpha_min` sets where the taper starts,
+`alpha_ramp` how long it is.
+
+### Not yet evaluated
+
+The void measurement needs the study configuration on the cluster at `t ~ 12`;
+the shipped example is unusable for it (see below). All that is verified
+locally is that `alpha_ramp = 0` reproduces the hard edge bit-for-bit, that
+`alpha_ramp = 1` runs 300 steps, and that it does **not** change the V_out
+drift — expected, since the ramp targets curvature and not volume.
+
+---
+
+## `crrct_vout`: restoring V_out by projection — implemented, then reverted
+
+Implemented in `3ab76ac`, reverted at the user's request when the work moved to
+the band edge. **The code is not in `HEAD`**; this section records what it did
+and what it measured, because the approach is still valid for the volume
+problem and may come back.
+
+It left the relaxation exactly as it was and removed the volume it injects
+afterwards. `cmpt_massbal` already brackets the loop, so
+`dvol = vol_ext(2) - vol_adv(2)` is the V_out just created, and it is taken out
+by solving
 
 ```
 sum dpsi*(1-alphac)*dV = -dvol      with   dpsi = -c*g,  g = psi*(1-psi)*(1-alphac)
 ```
 
-which is one scalar: `c = dvol / sum g*(1-alphac)*dV`, one `MPI_ALLREDUCE`.
+— one scalar `c = dvol / sum g*(1-alphac)*dV`, one `MPI_ALLREDUCE`. The weight
+`g` does three jobs: `psi*(1-psi)` confines the correction to interface cells,
+`(1-alphac)` keeps it out of the solid interior and debits each cell in
+proportion to what it contributes to `V_out`, and together they make the update
+bound-preserving for any `|c| < 1` with no clipping.
 
-The weight `g` is the whole design:
-
-- `psi*(1-psi)` vanishes in both bulk phases, so only interface cells pay.
-- `(1-alphac)` vanishes in the solid interior, so nothing is taken from volume
-  that is not physical fluid. The same factor is in the constraint, so a cell
-  is debited in proportion to what it actually contributes to `V_out`.
-- Together they make it **bound-preserving with no clipping**: driving a cell
-  below 0 needs `c*(1-psi)*(1-alphac) > 1`, above 1 needs
-  `|c|*psi*(1-alphac) > 1`, so any `|c| < 1` is safe everywhere at once.
-  `c_max = 0.9`. Measured `V_over`/`V_under` are exactly zero in every step of
-  every run so far.
-
-The sweep is restricted to `0 < alphac < 1` — the relaxation band plus the
-donor cells its stencil reads, i.e. the support of the error. The drop's free
-surface away from the particle is deliberately left alone.
-
-When one capped pass is not enough (the seeding relaxation, mainly) the pass
-repeats, up to `n_iter = 20`, recomputing `wsum` each time; anything still left
-comes back in `dvol_res` and `main.f90` carries it into the next step's `dvol`
-as `dvol_debt` rather than writing it off.
-
-### What this does and does not fix
-
-It removes the **integrated** V_out error. It does **not** touch the near-wall
-pitting — the relaxation still writes the same `psi` field it always did, and
-the correction is ~1e-4 per step against pit depths of ~0.2.
-
-### Measured (2026-09-10, local, Sessile_Drop 64x64x48, sigma = 1000, fixed sphere)
-
-Per-step residual `V_out_ext - V_out_adv` is **exactly 0** in every step once
-the seeding debt clears (2 steps at theta = 150, 0 at theta = 30).
-
-`dV_out` (%) against the same binary with `is_crrct_vout = F`:
-
-| step | th=150 off | th=150 on | th=30 off | th=30 on |
-|---|---|---|---|---|
-| 4  | -0.034 | +0.028 | +0.014 | -0.001 |
-| 14 | -0.064 | +0.011 | +0.004 | -0.011 |
-| 24 | -0.117 | -0.015 | -0.014 | -0.028 |
-
-At theta = 150 the steady drift becomes a bounded wobble ~8x smaller. At
-theta = 30 the two are comparable over this window — **no clear win yet**.
+Measured: per-step residual exactly zero once the seeding debt clears; at
+theta = 150 the drift over the first 25 steps (`-0.034 -> -0.117 %`) became a
+bounded wobble ~8x smaller. At theta = 30 the two were comparable — no
+demonstrated win. It does **not** touch the pitting.
 
 ### Why the local numbers stop there — read before trusting any of this
 
 The shipped `examples/Three_Phase/Sessile_Drop` at `sigma = 1000` on 64x64x48 is
 **marginal at t ~ 0.09**: `dt_cfl` collapses to ~1e-8 and the run aborts on the
-divergence check. It did so with the switch off at theta = 30 and with it on at
-theta = 150, and survived 300 steps in the other two combinations — i.e. the
-abort is not attributable to the switch. Past step ~25 every number above is
-contaminated, `dt` has collapsed so `%/t` is meaningless, and nothing here can
-judge stability or long-time drift.
+divergence check, in some configurations and not others, independently of any
+switch. Past step ~25 every number above is contaminated, `dt` has collapsed so
+`%/t` is meaningless, and nothing here can judge stability or long-time drift.
 
-**The evaluation has to be redone on the cluster with the study configuration**
-(the 2026-09-09 runs reached t = 40; those inputs are in the gitignored
+**Evaluation has to happen on the cluster with the study configuration** (the
+2026-09-09 runs reached t = 40; those inputs are in the gitignored
 `studies/contact-line-2026-09-09/`, not in the examples).
 
 ---
@@ -560,7 +575,7 @@ judge stability or long-time drift.
 | `max_pseudo_iter` | `input.nml` `&contact_line` | default `5`. More = stronger enforcement, more round-off |
 | `dtau_cfl` | `input.nml` `&contact_line` | default `0.3`; `dtau = dtau_cfl/maxval(dli)`, a CFL number on the smallest cell |
 | `alpha_min` | `input.nml` `&contact_line` | default `0.5`, the relaxation band threshold. **Do not tune to chase the near-wall voids** — it trades them for flooding/bridging, see above |
-| `is_crrct_vout` | `input.nml` `&contact_line` | default `T`. Projects the relaxation's V_out injection back out each step (`crrct_vout`). Set `F` to reproduce runs from before 2026-09-10 |
+| `alpha_ramp` | `input.nml` `&contact_line` | default `1.`. Fraction of the band width over which the relaxation ramps up from the outer edge. `0` restores the old hard mask exactly |
 
 All five are runtime inputs. The last three used to be hard-coded — in
 `main.f90` (`max_pseudo_iter`, `dtau`) and `extend.f90` (`alpha_min`) — and were

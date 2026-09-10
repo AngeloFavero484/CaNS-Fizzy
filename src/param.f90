@@ -83,13 +83,13 @@ integer , protected               :: max_pseudo_iter
 real(rp), protected               :: dtau_cfl
 real(rp), protected               :: alpha_min
 !
-! the contact-line relaxation in mod_extend advects psi in advective form on a
-! masked band, so it is a net source of fluid-1 volume. With is_crrct_vout the
-! injection is measured every step by mod_massbal and projected back out over
-! the diffuse solid shell (crrct_vout); with it off the relaxation runs as it
-! always did and the volume drift is left in.
+! fraction of the band width over which the relaxation ramps up from zero at
+! the outer edge alphac = alpha_min. 0 restores the hard on/off mask the band
+! used to have; 1 ramps across the whole band. See mod_extend -- the ramp is
+! there to keep cmpt_norm_curv from differentiating across a kink at the band
+! edge, which is what drives the near-wall nucleation.
 !
-logical , protected               :: is_crrct_vout
+real(rp), protected               :: alpha_ramp
 #if defined(_OPENACC)
 !
 ! cuDecomp input parameters
@@ -133,7 +133,7 @@ contains
                   ka12,cp12,beta12, &
                   psi_thickness_factor
     namelist /contact_line/ &
-                  max_pseudo_iter,dtau_cfl,alpha_min,is_crrct_vout
+                  max_pseudo_iter,dtau_cfl,alpha_min,alpha_ramp
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -177,10 +177,10 @@ contains
     !
     max_pseudo_iter = 5; dtau_cfl = 0.3_rp; alpha_min = 0.5_rp
     !
-    ! is_crrct_vout is new behaviour, not a restored hard-coded value: it
-    ! defaults on, so set it to F to reproduce runs from before it existed
+    ! alpha_ramp is new behaviour, not a restored hard-coded value: set it to
+    ! 0. to reproduce the hard band edge runs from before it existed used
     !
-    is_crrct_vout = .true.
+    alpha_ramp = 1._rp
     !
     ! read input file
     !

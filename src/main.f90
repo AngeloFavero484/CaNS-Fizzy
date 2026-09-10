@@ -47,7 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_massbal        , only: cmpt_massbal, crrct_vout
+  use mod_massbal        , only: cmpt_massbal
   use mod_param          , only: small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
@@ -66,7 +66,7 @@ program cans
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
                                  vof_thinc_beta, &
-                                 max_pseudo_iter,dtau_cfl,is_crrct_vout
+                                 max_pseudo_iter,dtau_cfl
   use mod_rotnorm        , only: rot_norm
   use mod_extend         , only: compute_uextend, advect_vof_upwind
 #if 1
@@ -175,14 +175,6 @@ program cans
   !
   integer, parameter :: mass_unit = 5556
   real(rp), dimension(5) :: vol_adv,vol_ext
-  !
-  ! part of the relaxation's injection that crrct_vout could not take back out
-  ! (its correction is capped). It is not written off: dvol_debt carries it
-  ! into the next step's correction, so a capped step is deferred rather than
-  ! lost and V_out stays right in the long run. The cap only ever bites in the
-  ! first few steps, while the extension is still converging.
-  !
-  real(rp) :: dvol_res,dvol_debt
   !
   real(rp), allocatable, dimension(:,:,:) :: s
   !
@@ -543,13 +535,6 @@ endif
   ! pseudo-time step for the contact-line relaxation below; u_ext is a unit
   ! vector, so dtau_cfl is a CFL number on the smallest cell size
   dtau = dtau_cfl / maxval(dli(1:3))
-  !
-  ! same probe/correct pair as in the time loop below -- the relaxation that
-  ! seeds the extension injects volume too, and left uncorrected it would
-  ! silently redefine the initial condition set by initvof
-  !
-  dvol_debt = 0._rp
-  call cmpt_massbal(n,dl,dzf,psi,vol_adv)
   do iter = 1, max_pseudo_iter
     u_ext=0
     v_ext=0
@@ -568,15 +553,6 @@ endif
   call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
   if (myid==0) then
     PRINT *, "Fstot", Fstot
-  end if
-  if(is_crrct_vout) then
-    call cmpt_massbal(n,dl,dzf,psi,vol_ext)
-    call crrct_vout(n,dl,dzf,vol_ext(2)-vol_adv(2)+dvol_debt,psi,dvol_res)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    dvol_debt = dvol_res
-    if(myid == 0 .and. dvol_res /= 0._rp) then
-      print*, 'V_out correction capped while seeding, deferred = ', dvol_res
-    end if
   end if
   !
 #if !defined(_INTERFACE_CAPTURING_VOF)
@@ -729,22 +705,6 @@ endif
         call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
         if (myid==0) then
           PRINT *, "Fstot", Fstot
-        end if
-        !
-        ! project that injection back out of V_out. This runs after rot_norm so
-        ! the normals, kappa and Fs are still those of the relaxed psi, exactly
-        ! as before -- the correction is a volume fix and nothing else. vol_ext
-        ! is then re-probed, so the V_out_ext/V_out_adv pair in mass_data.csv
-        ! reports the residual after correction rather than the raw injection.
-        !
-        if(is_crrct_vout) then
-          call crrct_vout(n,dl,dzf,vol_ext(2)-vol_adv(2)+dvol_debt,psi,dvol_res)
-          call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-          call cmpt_massbal(n,dl,dzf,psi,vol_ext)
-          dvol_debt = dvol_res
-          if(myid == 0 .and. dvol_res /= 0._rp) then
-            print*, 'V_out correction capped, deferred to next step = ', dvol_res
-          end if
         end if
       else
         call initeul(n)

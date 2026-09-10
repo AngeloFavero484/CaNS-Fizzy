@@ -86,11 +86,16 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
   relaxation loop (`src/extend.f90`), which runs unconditionally every timestep in
   cells with `0 < alphac < 1`. It is ~15 orders below anything physical. Clip with
   `where(abs(psi) < 1e-12) psi = 0._rp` only if it pollutes a diagnostic.
-- **The relaxation's V_out injection is projected back out each step** by
-  `crrct_vout` (`src/massbal.f90`, switch `is_crrct_vout` in `&contact_line`,
-  default on). The relaxation itself is unchanged and still writes `psi`; only
-  the integrated volume error is removed. The near-wall pitting is **not**
-  fixed by it.
+- **The band edge is smoothed** by `alpha_ramp` (`&contact_line`, default `1.`):
+  the relaxation ramps up over a quintic smootherstep from the outer edge
+  instead of switching on hard. That targets the spurious `kappa` behind the
+  nucleation. `alpha_ramp = 0` restores the old hard mask bit-for-bit.
+  **Not yet evaluated** — the void count needs a cluster run at `t ~ 12`.
+- **The V_out drift is currently NOT corrected.** `crrct_vout` (a projection
+  that removes the relaxation's injection each step) was implemented in
+  `3ab76ac` and reverted; it is documented in
+  `.claude/references/contact-line-model.md` in case it comes back. Do not
+  re-derive it.
 - **The near-wall nucleation is capillary-mediated, not written by the
   relaxation.** Settled 2026-09-10: in the `psi_cl` build (`f45d41a`) the
   relaxation cannot write `psi` at all and the voids were unchanged. The cause

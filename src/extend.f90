@@ -2,7 +2,7 @@ module mod_extend
   !
   use mpi
   use mod_types
-  use mod_param         , only: pi,sigma,alpha_min
+  use mod_param         , only: pi,sigma,alpha_min,alpha_ramp
 #if defined(_PARTICLE)
     use prt_mod_common    , only: alphac,norm_partx,norm_party,norm_partz
 #endif
@@ -95,6 +95,29 @@ module mod_extend
   end subroutine compute_uextend
 
   subroutine advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi)
+    !
+    ! the update is weighted by wgt(alphac), which rises smoothly from 0 at the
+    ! outer band edge alphac = alpha_min to 1 at
+    ! alphac = alpha_min + alpha_ramp*(1-alpha_min).
+    !
+    ! this is not a strength knob, it is a smoothness one. With the hard on/off
+    ! mask the band used to have, cells just inside the edge were relaxed and
+    ! cells just outside were not, so the field left behind had a kink at
+    ! alphac = alpha_min -- and cmpt_norm_curv, which runs on that field, takes
+    ! two derivatives across it. The resulting spurious kappa feeds
+    ! sigma*kappa*grad psi and pulls fluid into the band, pitting the cells just
+    ! outside it. That is the near-wall nucleation, and it is why alpha_min
+    ! (which moves the edge) shifts the voids while max_pseudo_iter and dtau_cfl
+    ! (which only change the strength) barely touch them. See
+    ! .claude/references/contact-line-model.md.
+    !
+    ! the ramp is the quintic smootherstep 6x^5-15x^4+10x^3, whose first *and*
+    ! second derivatives vanish at both ends. A linear or cubic ramp would only
+    ! remove the jump in psi or in grad psi; kappa needs the second derivative
+    ! continuous too, so the quintic is the lowest order that actually helps.
+    !
+    ! alpha_ramp = 0 restores the old hard edge exactly.
+    !
     implicit none
     ! Input
     integer , intent(in), dimension(3) :: n
@@ -107,7 +130,13 @@ module mod_extend
     integer  :: i, j, k
     real(rp) :: u, v, w
     real(rp) :: dpsidx, dpsidy, dpsidz
-
+    real(rp) :: x, wgt, rampi
+    logical  :: is_ramp
+    !
+    is_ramp = alpha_ramp > 0._rp
+    rampi   = 0._rp
+    if (is_ramp) rampi = 1._rp/(alpha_ramp*(1._rp-alpha_min))
+    !
     do k = 1, n(3)
       do j = 1, n(2)
         do i = 1, n(1)
@@ -115,6 +144,12 @@ module mod_extend
             u = u_ext(i,j,k)
             v = v_ext(i,j,k)
             w = w_ext(i,j,k)
+            if (is_ramp) then
+              x   = min((alphac(i,j,k)-alpha_min)*rampi,1._rp)
+              wgt = x*x*x*(x*(6._rp*x - 15._rp) + 10._rp)
+            else
+              wgt = 1._rp
+            end if
           if (u > 0.0_rp) then
             dpsidx = (psi(i,j,k) - psi(i-1,j,k)) * dli(1)
           else
@@ -131,7 +166,7 @@ module mod_extend
             dpsidz = (psi(i,j,k+1) - psi(i,j,k)) * dli(3)
           end if
           !
-          psi(i,j,k) = psi(i,j,k) - dtau * (u*dpsidx + v*dpsidy + w*dpsidz)
+          psi(i,j,k) = psi(i,j,k) - wgt * dtau * (u*dpsidx + v*dpsidy + w*dpsidz)
           !
           end if
           

@@ -261,12 +261,13 @@ difference of `V_out_adv` between consecutive rows.
    `where(abs(psi) < 1e-12) psi = 0._rp` only if it pollutes a diagnostic.
    *Would stop being negligible under `SINGLE_PRECISION=1`* (`~1e-7`).
 
-2. **Band mismatch — fixed 2026-09-10.** `rotnorm.f90` used a hard-coded
-   `alphac > 0` while `extend.f90` uses `alphac > alpha_min`, so the capillary
-   force was integrated over a wider shell than the one the interface is
-   relaxed on. `rotnorm.f90` now uses `alpha_min` too. **This changes the
-   `F_cap` column of `forces_data.csv`** — values from before that date are not
-   comparable with values after it.
+2. **Band mismatch — open.** `rotnorm.f90` uses a hard-coded `alphac > 0`
+   while `extend.f90` uses `alphac > alpha_min`, so the capillary force is
+   integrated over a wider shell than the one the interface is relaxed on.
+   Switching `rotnorm.f90` to `alpha_min` was committed in `f45d41a` and
+   reverted on 2026-09-10 with the rest of that day's code. **Builds from
+   `f45d41a` through `5eabb52` carry the `alpha_min` band**, so their `F_cap`
+   column in `forces_data.csv` is not comparable with any other build's.
 
 3. **Normals inconsistency — worse than it reads.** The main phase-field step
    computes normals and curvature from `phi` (the SDF) under `_SDF_NORMALS`,
@@ -475,9 +476,9 @@ actual cause of the pitting — but on its own it trades one problem for another
 
 **Nothing is in the code now.** The band-edge smoothing (`alpha_ramp`) and the
 volume projection (`crrct_vout`) were both implemented and both reverted; each
-is documented below with what it measured. `HEAD` carries only the `extend.f90`
-/ `rotnorm.f90` hygiene fixes, so the volume drift and the nucleation are both
-still present. Next steps are in `planned-changes.md` items 2 and 3.
+is documented below with what it measured. The `extend.f90` / `rotnorm.f90`
+hygiene fixes from `f45d41a` were reverted too, so the source is identical to
+`db3dace`: the volume drift and the nucleation are both still present. Next steps are in `planned-changes.md` items 2 and 3.
 
 ---
 

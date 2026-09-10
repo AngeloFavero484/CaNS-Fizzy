@@ -105,13 +105,14 @@ before.
 |---|---|---|
 | `max_pseudo_iter` | `5` | relaxation iterations per timestep. A **rate** knob: it sets how fast the relaxation converges, not what it converges to (see `contact-line-model.md`), so do not expect it to change a converged result. More also means more of the machine-epsilon `psi` round-off noted there. |
 | `dtau_cfl` | `0.3` | pseudo-timestep as a CFL number on the smallest cell: `dtau = dtau_cfl/maxval(dli)`. `u_ext` is a unit vector, so this is a true CFL. Also a **rate** knob, same caveat. Raising it past ~0.5 risks the upwind advection going unstable. |
-| `alpha_min` | `0.5` | lower edge of the `alphac` band the relaxation acts on (band is `alpha_min < alphac < 1`). Applies to `compute_uextend` and `advect_vof_upwind` in `extend.f90`, and since 2026-09-10 to `rot_norm` in `rotnorm.f90` as well, which must all agree. |
+| `alpha_min` | `0.5` | lower edge of the `alphac` band the relaxation acts on (band is `alpha_min < alphac < 1`). Applies to `compute_uextend` and `advect_vof_upwind` in `extend.f90`, which must agree. It does **not** apply to `rot_norm` in `rotnorm.f90`. |
 
-`rotnorm.f90` used to integrate the capillary force over a hard-coded
-`alphac > 0` — a wider shell than the relaxation band. It now uses `alpha_min`
-too, so the band mismatch documented in `contact-line-model.md` is closed.
-**This changed the `F_cap` column of `forces_data.csv`**: values from before
-2026-09-10 are not comparable with values after it.
+`rotnorm.f90` integrates the capillary force over a hard-coded `alphac > 0`,
+which is a wider shell than the relaxation band. That is the band mismatch in
+`contact-line-model.md`, and it is still open. Switching it to `alpha_min` was
+committed in `f45d41a` and reverted on 2026-09-10. **Builds from `f45d41a`
+through `5eabb52` carry the `alpha_min` band**, so their `F_cap` column in
+`forces_data.csv` is not comparable with any other build's.
 
 The whole block is skipped when `is_track_interface = F`, so these knobs have
 no effect in that mode.

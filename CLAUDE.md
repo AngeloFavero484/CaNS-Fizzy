@@ -90,8 +90,10 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
   attempts were implemented and all three reverted — `psi_cl` (`f45d41a`),
   `crrct_vout` (`3ab76ac`), `alpha_ramp` (`dfc55b1`). Each is written up with
   its measurements in `.claude/references/contact-line-model.md`; **do not
-  re-derive any of them**. `HEAD` carries only the `extend.f90` / `rotnorm.f90`
-  hygiene fixes. The next two things to try are `planned-changes.md` items 2
+  re-derive any of them**. The `extend.f90` / `rotnorm.f90` hygiene fixes that
+  rode along in `f45d41a` were reverted as well, at the user's request: the
+  source is identical to `db3dace`, so the `rotnorm` band mismatch is open
+  again. The next two things to try are `planned-changes.md` items 2
   and 3 — do not implement them unasked.
 - **Nothing that only scales the relaxation can work.** `advect_vof_upwind` is
   `psi -= w*dtau*(u_ext.grad psi)`; any positive scalar `w` has the same fixed

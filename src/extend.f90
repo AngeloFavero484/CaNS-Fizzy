@@ -25,23 +25,9 @@ module mod_extend
     ! Variabili locali
     real(rp) :: n_int(3), n_wall(3), n1(3), n2(3)
     real(rp) :: norm_n1, norm_n2, norm_uext
-    real(rp) :: c, theta_rad, cot_theta, sin_theta
+    real(rp) :: c, theta_rad, cot_theta
     real(rp), parameter :: eps = epsilon(1._rp)
-    !
-    ! floor on sin(theta) in the cotangent below. theta -> 0 or 180 makes
-    ! cot(pi-theta) singular; u_ext is normalised a few lines later, so once
-    ! |cot_theta| is this large the result is already indistinguishable from
-    ! the purely tangential +/-n2 and the floor changes nothing physical --
-    ! it only keeps the two end points from producing Inf/NaN.
-    !
-    real(rp), parameter :: sin_min = 1.e-6_rp
     integer  :: i, j, k
-    !
-    ! theta is a run constant: the cotangent is loop-invariant
-    !
-    theta_rad = theta * pi / 180.0_rp
-    sin_theta = max(sin(pi-theta_rad),sin_min)
-    cot_theta = cos(pi-theta_rad) / sin_theta
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -57,7 +43,7 @@ module mod_extend
             n1(2) = n_int(3)*n_wall(1) - n_int(1)*n_wall(3)
             n1(3) = n_int(1)*n_wall(2) - n_int(2)*n_wall(1)
             !
-            norm_n1 = max(sqrt(n1(1)**2 + n1(2)**2 + n1(3)**2),eps)
+            norm_n1 = sqrt(n1(1)**2 + n1(2)**2 + n1(3)**2) + eps
             n1(1) = -n1(1) / norm_n1
             n1(2) = -n1(2) / norm_n1
             n1(3) = -n1(3) / norm_n1
@@ -66,25 +52,28 @@ module mod_extend
             n2(2) = n1(3)*n_wall(1) - n1(1)*n_wall(3)
             n2(3) = n1(1)*n_wall(2) - n1(2)*n_wall(1)
             !
-            norm_n2 = max(sqrt(n2(1)**2 + n2(2)**2 + n2(3)**2),eps)
+            norm_n2 = sqrt(n2(1)**2 + n2(2)**2 + n2(3)**2) + eps
             n2(1) = -n2(1) / norm_n2
             n2(2) = -n2(2) / norm_n2
             n2(3) = -n2(3) / norm_n2
             c = n_int(1)*n2(1) + n_int(2)*n2(2) + n_int(3)*n2(3)
+            theta_rad = theta * pi / 180.0_rp
             if (abs(c) < eps) then
               u_ext(i,j,k) = n_wall(1)
               v_ext(i,j,k) = n_wall(2)
               w_ext(i,j,k) = n_wall(3)
             else if (c < 0.0_rp) then
+              cot_theta = cos(pi-theta_rad) / sin(pi-theta_rad)
               u_ext(i,j,k) = n_wall(1) - cot_theta * n2(1)
               v_ext(i,j,k) = n_wall(2) - cot_theta * n2(2)
               w_ext(i,j,k) = n_wall(3) - cot_theta * n2(3)
             else
+              cot_theta = cos(pi-theta_rad) / sin(pi-theta_rad)
               u_ext(i,j,k) = n_wall(1) + cot_theta * n2(1)
               v_ext(i,j,k) = n_wall(2) + cot_theta * n2(2)
               w_ext(i,j,k) = n_wall(3) + cot_theta * n2(3)
             end if
-            norm_uext = max(sqrt(u_ext(i,j,k)**2 + v_ext(i,j,k)**2 + w_ext(i,j,k)**2),eps)
+            norm_uext = sqrt(u_ext(i,j,k)**2 + v_ext(i,j,k)**2 + w_ext(i,j,k)**2) + eps
             u_ext(i,j,k) = u_ext(i,j,k) / norm_uext
             v_ext(i,j,k) = v_ext(i,j,k) / norm_uext
             w_ext(i,j,k) = w_ext(i,j,k) / norm_uext

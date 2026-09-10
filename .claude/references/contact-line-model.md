@@ -282,11 +282,11 @@ difference of `V_out_adv` between consecutive rows.
    run: first-order upwind at `dtau_cfl = 0.3` is monotone, so it cannot create
    a new extremum. This would stop holding if `dtau_cfl` were pushed past 1.
 
-5. **The relaxation *was* a volume source that also pitted the cells next to
-   its own band.** The two sections below record that study. Both symptoms are
-   removed at the source by the `psi_cl` change (2026-09-10) — the relaxation
-   can no longer write the transported `psi` at all. Read those sections as the
-   diagnosis that motivated the change, not as current behaviour.
+5. **The relaxation is a volume source, and it pits the cells next to its own
+   band.** The two sections below are the study of both. The *integrated*
+   volume error is now taken back out each step by `crrct_vout`
+   (`is_crrct_vout`, default on); the pitting is untouched and is still
+   current behaviour.
 
 ---
 
@@ -420,11 +420,12 @@ relaxed `psi`, so a non-physical profile feeds `sigma*kappa*grad psi`). A
 `sigma = 0` run cannot separate them: with no surface tension the drop never
 wets, so there is no contact region to pit.
 
-Since 2026-09-10 the relaxation cannot write `psi` at all, so **one run answers
-it**: if the pitting survives on `psi`, it was capillary-mediated through
-`kappa`; if it vanishes, it was written directly. Not yet run.
+The `psi_cl` build (commit `f45d41a`, reverted) would have answered this in one
+run — with the relaxation unable to write `psi`, surviving pits would prove they
+were capillary-mediated through `kappa`. It can still be used as a diagnostic
+build even though it was rejected as a model.
 
-### The fix, for both — applied 2026-09-10
+### The fix, for both
 
 **Not** the flux form. `psi -= dtau*div(u_ext*psi)` with a paired band edge
 conserves `sum_band psi`, which is the wrong integral: `u_ext` points into the
@@ -434,11 +435,92 @@ the fluid-side band cells. `V_out` would then *decrease* at comparable
 magnitude — the sign flips, the drift does not go away. That earlier proposal
 is superseded; do not implement it.
 
-What was done instead: **the relaxation no longer touches the transported
-`psi`.** It runs on `psi_cl`, a persistent copy, and the prescribed angle
-reaches the flow only through `normx/y/z` and `kappa` — the extension became a
-boundary condition on the normals rather than a source term on the volume
-fraction. See the section "The extension as a boundary condition" below.
+**Not the `psi_cl` boundary-condition reformulation either — tried and
+rejected, 2026-09-10.** That version ran the relaxation on a persistent copy so
+the transported `psi` was never written, making the extension exactly
+volume-preserving (verified bit-for-bit). It is recorded in commit `f45d41a`,
+reverted in `HEAD`. The user rejected it on the results; the specific objection
+is not recorded here. **Do not re-propose it without asking.** Its cost is that
+the contact angle is then enforced only dynamically through `kappa`, never
+kinematically, which changes the interface behaviour near the wall.
+
+**What is in the code now: an explicit projection.** See the next section.
+
+---
+
+## `crrct_vout`: restoring V_out by projection (2026-09-10, current)
+
+`src/massbal.f90`, called from `main.f90` after the relaxation loop and after
+the seeding loop, under the runtime switch `is_crrct_vout` (`&contact_line`,
+default `T`).
+
+The relaxation stays exactly as it was — it still writes `psi`, still injects.
+The injection is then measured and taken straight back out. `cmpt_massbal`
+already brackets the loop, so `dvol = vol_ext(2) - vol_adv(2)` is the V_out the
+relaxation just created. `crrct_vout` removes it by solving
+
+```
+sum dpsi*(1-alphac)*dV = -dvol      with   dpsi = -c*g,  g = psi*(1-psi)*(1-alphac)
+```
+
+which is one scalar: `c = dvol / sum g*(1-alphac)*dV`, one `MPI_ALLREDUCE`.
+
+The weight `g` is the whole design:
+
+- `psi*(1-psi)` vanishes in both bulk phases, so only interface cells pay.
+- `(1-alphac)` vanishes in the solid interior, so nothing is taken from volume
+  that is not physical fluid. The same factor is in the constraint, so a cell
+  is debited in proportion to what it actually contributes to `V_out`.
+- Together they make it **bound-preserving with no clipping**: driving a cell
+  below 0 needs `c*(1-psi)*(1-alphac) > 1`, above 1 needs
+  `|c|*psi*(1-alphac) > 1`, so any `|c| < 1` is safe everywhere at once.
+  `c_max = 0.9`. Measured `V_over`/`V_under` are exactly zero in every step of
+  every run so far.
+
+The sweep is restricted to `0 < alphac < 1` — the relaxation band plus the
+donor cells its stencil reads, i.e. the support of the error. The drop's free
+surface away from the particle is deliberately left alone.
+
+When one capped pass is not enough (the seeding relaxation, mainly) the pass
+repeats, up to `n_iter = 20`, recomputing `wsum` each time; anything still left
+comes back in `dvol_res` and `main.f90` carries it into the next step's `dvol`
+as `dvol_debt` rather than writing it off.
+
+### What this does and does not fix
+
+It removes the **integrated** V_out error. It does **not** touch the near-wall
+pitting — the relaxation still writes the same `psi` field it always did, and
+the correction is ~1e-4 per step against pit depths of ~0.2.
+
+### Measured (2026-09-10, local, Sessile_Drop 64x64x48, sigma = 1000, fixed sphere)
+
+Per-step residual `V_out_ext - V_out_adv` is **exactly 0** in every step once
+the seeding debt clears (2 steps at theta = 150, 0 at theta = 30).
+
+`dV_out` (%) against the same binary with `is_crrct_vout = F`:
+
+| step | th=150 off | th=150 on | th=30 off | th=30 on |
+|---|---|---|---|---|
+| 4  | -0.034 | +0.028 | +0.014 | -0.001 |
+| 14 | -0.064 | +0.011 | +0.004 | -0.011 |
+| 24 | -0.117 | -0.015 | -0.014 | -0.028 |
+
+At theta = 150 the steady drift becomes a bounded wobble ~8x smaller. At
+theta = 30 the two are comparable over this window — **no clear win yet**.
+
+### Why the local numbers stop there — read before trusting any of this
+
+The shipped `examples/Three_Phase/Sessile_Drop` at `sigma = 1000` on 64x64x48 is
+**marginal at t ~ 0.09**: `dt_cfl` collapses to ~1e-8 and the run aborts on the
+divergence check. It did so with the switch off at theta = 30 and with it on at
+theta = 150, and survived 300 steps in the other two combinations — i.e. the
+abort is not attributable to the switch. Past step ~25 every number above is
+contaminated, `dt` has collapsed so `%/t` is meaningless, and nothing here can
+judge stability or long-time drift.
+
+**The evaluation has to be redone on the cluster with the study configuration**
+(the 2026-09-09 runs reached t = 40; those inputs are in the gitignored
+`studies/contact-line-2026-09-09/`, not in the examples).
 
 ---
 
@@ -451,6 +533,7 @@ fraction. See the section "The extension as a boundary condition" below.
 | `max_pseudo_iter` | `input.nml` `&contact_line` | default `5`. More = stronger enforcement, more round-off |
 | `dtau_cfl` | `input.nml` `&contact_line` | default `0.3`; `dtau = dtau_cfl/maxval(dli)`, a CFL number on the smallest cell |
 | `alpha_min` | `input.nml` `&contact_line` | default `0.5`, the relaxation band threshold. **Do not tune to chase the near-wall voids** — it trades them for flooding/bridging, see above |
+| `is_crrct_vout` | `input.nml` `&contact_line` | default `T`. Projects the relaxation's V_out injection back out each step (`crrct_vout`). Set `F` to reproduce runs from before 2026-09-10 |
 
 All five are runtime inputs. The last three used to be hard-coded — in
 `main.f90` (`max_pseudo_iter`, `dtau`) and `extend.f90` (`alpha_min`) — and were

@@ -97,19 +97,23 @@ Cases using a `*3`/`*2`/`*1` option **require a `spheres.in`** next to `input.nm
 Fork-only. These three drive the pseudo-time relaxation in `main.f90` that
 imposes `theta` at the particle surface (see
 [`contact-line-model.md`](contact-line-model.md)). They were hard-coded until
-they were promoted to the namelist; **the defaults are exactly the old
-hard-coded values**, so an `input.nml` without this group behaves as before.
+they were promoted to the namelist; **the defaults of the first three are
+exactly the old hard-coded values**, so an `input.nml` without this group keeps
+the relaxation itself behaving as before. `is_crrct_vout` is the exception —
+it is new behaviour and defaults *on*.
 
 | parameter | default | meaning |
 |---|---|---|
 | `max_pseudo_iter` | `5` | relaxation iterations per timestep. More = stronger enforcement of `theta`, but more of the machine-epsilon `psi` round-off noted in `contact-line-model.md`. |
 | `dtau_cfl` | `0.3` | pseudo-timestep as a CFL number on the smallest cell: `dtau = dtau_cfl/maxval(dli)`. `u_ext` is a unit vector, so this is a true CFL. Raising it past ~0.5 risks the upwind advection going unstable. |
-| `alpha_min` | `0.5` | lower edge of the `alphac` band the relaxation acts on (band is `alpha_min < alphac < 1`). Applies to **both** `compute_uextend` and `advect_vof_upwind` in `extend.f90`, which must agree. |
+| `alpha_min` | `0.5` | lower edge of the `alphac` band the relaxation acts on (band is `alpha_min < alphac < 1`). Applies to `compute_uextend` and `advect_vof_upwind` in `extend.f90`, and since 2026-09-10 to `rot_norm` in `rotnorm.f90` as well, which must all agree. |
+| `is_crrct_vout` | `T` | project the V_out the relaxation injects back out of the fluid each step (`crrct_vout` in `massbal.f90`). Set `F` to reproduce runs from before 2026-09-10. |
 
-Note `alpha_min` does **not** move the band `rotnorm.f90` integrates the
-capillary force over — that one is still `alphac > 0`. The band mismatch
-documented in `contact-line-model.md` is therefore unchanged, and lowering
-`alpha_min` towards 0 narrows the gap.
+`rotnorm.f90` used to integrate the capillary force over a hard-coded
+`alphac > 0` — a wider shell than the relaxation band. It now uses `alpha_min`
+too, so the band mismatch documented in `contact-line-model.md` is closed.
+**This changed the `F_cap` column of `forces_data.csv`**: values from before
+2026-09-10 are not comparable with values after it.
 
 The whole block is skipped when `is_track_interface = F`, so these knobs have
 no effect in that mode.

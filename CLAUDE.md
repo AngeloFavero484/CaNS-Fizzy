@@ -86,15 +86,18 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
   relaxation loop (`src/extend.f90`), which runs unconditionally every timestep in
   cells with `0 < alphac < 1`. It is ~15 orders below anything physical. Clip with
   `where(abs(psi) < 1e-12) psi = 0._rp` only if it pollutes a diagnostic.
-  Since 2026-09-10 the relaxation writes `psi_cl`, not `psi`, so the noise no
-  longer reaches the transported field — it now lives in `psi_cl` and in the
-  normals/curvature derived from it.
-- **The contact-line relaxation is a boundary condition on the normals, not a
-  source on `psi`.** It advects `psi_cl`, a persistent copy; the prescribed
-  angle reaches the flow only via `normx/y/z` and `kappa`. That makes it
-  bit-for-bit volume-preserving, which is the point — see the `psi_cl` section
-  of `.claude/references/contact-line-model.md`. The equilibrium apparent angle
-  under this formulation has **not** yet been re-measured.
+- **The relaxation's V_out injection is projected back out each step** by
+  `crrct_vout` (`src/massbal.f90`, switch `is_crrct_vout` in `&contact_line`,
+  default on). The relaxation itself is unchanged and still writes `psi`; only
+  the integrated volume error is removed. The near-wall pitting is **not**
+  fixed by it.
+- **Do not re-propose the `psi_cl` reformulation** (relaxation on a persistent
+  copy, angle carried only by `kappa`). It was implemented in `f45d41a` and
+  reverted — the user rejected it on the results. Ask before revisiting.
+- **The shipped `Sessile_Drop` example is not a usable local test bed.** At
+  `sigma = 1000` on 64x64x48 it goes marginal at `t ~ 0.09` (`dt_cfl` -> 1e-8,
+  divergence abort) in some configurations and not others. Any mass-conservation
+  or stability claim has to come from a cluster run with the study inputs.
 - The user works in **Italian locale** — compiler/make errors come back in Italian.
 - The user is a PhD researcher in multiphase CFD. Answer at that level: name the
   routine and line, state the mechanism, skip the tutorial.

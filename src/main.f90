@@ -47,7 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_massbal        , only: cmpt_massbal
+  use mod_massbal        , only: cmpt_massbal, crrct_vout
   use mod_param          , only: small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
@@ -66,7 +66,7 @@ program cans
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
                                  vof_thinc_beta, &
-                                 max_pseudo_iter,dtau_cfl,alpha_min
+                                 max_pseudo_iter,dtau_cfl,is_crrct_vout
   use mod_rotnorm        , only: rot_norm
   use mod_extend         , only: compute_uextend, advect_vof_upwind
 #if 1
@@ -104,7 +104,7 @@ program cans
   use prt_mod_initparticles        , only: initparticles
   use prt_mod_initeul              , only: initeul
   use prt_mod_initvof              , only: initvof
-  use prt_mod_param                , only: radius,rho_s,eps_sol,read_particle_input
+  use prt_mod_param                , only: radius,rho_s,read_particle_input
   use prt_mod_coordsfp             , only: coordsfp
   use prt_mod_intgr_over_sphere    , only: intgr_over_sphere
 #if !defined(_EULER)
@@ -171,12 +171,18 @@ program cans
   !
   ! fluid-1 volume budget, written to mass_data.csv (see mod_massbal):
   ! vol_adv is measured after the interface advection, vol_ext after the
-  ! contact-line relaxation loop. Since the relaxation was moved onto psi_cl
-  ! the two are identical by construction; the pair is kept as the check that
-  ! the extension really is volume-preserving.
+  ! contact-line relaxation loop, so the drift of each can be attributed.
   !
   integer, parameter :: mass_unit = 5556
   real(rp), dimension(5) :: vol_adv,vol_ext
+  !
+  ! part of the relaxation's injection that crrct_vout could not take back out
+  ! (its correction is capped). It is not written off: dvol_debt carries it
+  ! into the next step's correction, so a capped step is deferred rather than
+  ! lost and V_out stays right in the long run. The cap only ever bites in the
+  ! first few steps, while the extension is still converging.
+  !
+  real(rp) :: dvol_res,dvol_debt
   !
   real(rp), allocatable, dimension(:,:,:) :: s
   !
@@ -184,13 +190,6 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z,fx_old,fy_old,fz_old
-  !
-  ! psi_cl is the field the contact-line relaxation acts on -- see mod_extend
-  ! and the seeding block below. It is a persistent copy of psi, never the
-  ! transported psi itself.
-  !
-  real(rp), allocatable, dimension(:,:,:) :: psi_cl
-  integer :: n_seed
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   real(rp), allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                              surfx_o,surfy_o,surfz_o
@@ -289,7 +288,6 @@ program cans
            rhsbp%z(n(1),n(2),0:1))
   allocate(psi,kappa,normx,normy,normz,mold=pp)
   allocate(psio,mold=pp)
-  allocate(psi_cl,mold=pp)
   allocate(fx_old,fy_old,fz_old,mold=pp)
   Fs(:) = 0._rp
   Fstot(:) = 0._rp
@@ -546,43 +544,39 @@ endif
   ! vector, so dtau_cfl is a CFL number on the smallest cell size
   dtau = dtau_cfl / maxval(dli(1:3))
   !
-  ! the relaxation runs on psi_cl and never on the transported psi: the
-  ! prescribed contact angle reaches the flow through normx/y/z and kappa, so
-  ! the extension is a boundary condition on the normals rather than a source
-  ! term on the volume fraction. That makes it exactly volume-preserving --
-  ! psi, and hence V_out in mod_massbal, cannot be touched by it.
+  ! same probe/correct pair as in the time loop below -- the relaxation that
+  ! seeds the extension injects volume too, and left uncorrected it would
+  ! silently redefine the initial condition set by initvof
   !
-  ! psi_cl is persistent: in the time loop only its part outside the band is
-  ! re-seeded from psi, so the max_pseudo_iter iterations per step just track
-  ! the interface's motion. Here it has to be built from scratch instead, which
-  ! needs enough pseudo-time to cross the whole band -- the extension advances
-  ! dtau_cfl cells per iteration and the band is ~eps_sol cells wide.
-  !
-  ! (no !$acc here, nor on the re-seed in the time loop: psi_cl belongs to the
-  ! contact-line path, which is host-only -- neither mod_extend nor mod_rotnorm
-  ! carries directives and alphac is in no device data region.)
-  !
-  psi_cl(:,:,:) = psi(:,:,:)
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi_cl)
-  n_seed = max(max_pseudo_iter,ceiling(3._rp*eps_sol/dtau_cfl))
-  do iter = 1, n_seed
+  dvol_debt = 0._rp
+  call cmpt_massbal(n,dl,dzf,psi,vol_adv)
+  do iter = 1, max_pseudo_iter
     u_ext=0
     v_ext=0
     w_ext=0
     call compute_uextend(n, theta, normx, normy, normz, u_ext, v_ext, w_ext)
-    call advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi_cl)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi_cl)
-    call cmpt_norm_curv(n,dli,dzci,dzfi,psi_cl,normx,normy,normz,kappa)
+    call advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+    call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
     call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
     call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
   end do
-  call rot_norm(n,dli,dzci,psi_cl,theta,is_bound,normx,normy,normz,kappa,Fs)
+  call rot_norm(n,dli,dzci,psi,theta,is_bound,normx,normy,normz,kappa,Fs)
   Fstot_old=Fstot
   call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
   if (myid==0) then
     PRINT *, "Fstot", Fstot
+  end if
+  if(is_crrct_vout) then
+    call cmpt_massbal(n,dl,dzf,psi,vol_ext)
+    call crrct_vout(n,dl,dzf,vol_ext(2)-vol_adv(2)+dvol_debt,psi,dvol_res)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+    dvol_debt = dvol_res
+    if(myid == 0 .and. dvol_res /= 0._rp) then
+      print*, 'V_out correction capped while seeding, deferred = ', dvol_res
+    end if
   end if
   !
 #if !defined(_INTERFACE_CAPTURING_VOF)
@@ -710,50 +704,47 @@ endif
         ! fluid-1 volume after the interface advection but before the
         ! contact-line relaxation. alphac is current here (initeul has just
         ! rebuilt it), so the inside/outside split matches the band the
-        ! relaxation below reads.
+        ! relaxation below is about to write into.
         !
         call cmpt_massbal(n,dl,dzf,psi,vol_adv)
-        !
-        ! re-seed psi_cl from the transported psi outside the relaxation band.
-        ! Inside the band the previous step's extension is kept, so the
-        ! max_pseudo_iter iterations below only have to follow the interface
-        ! rather than rebuild the extension from scratch. alphac was just
-        ! rebuilt by initeul and its halos exchanged, so the test is current.
-        !
-        do k=1,n(3)
-          do j=1,n(2)
-            do i=1,n(1)
-              if(alphac(i,j,k) <= alpha_min) psi_cl(i,j,k) = psi(i,j,k)
-            end do
-          end do
-        end do
-        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi_cl)
         do iter = 1, max_pseudo_iter
           u_ext=0
           v_ext=0
           w_ext=0
           call compute_uextend(n, theta, normx, normy, normz, u_ext, v_ext, w_ext)
-          call advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi_cl)
-          call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi_cl)
-          call cmpt_norm_curv(n,dli,dzci,dzfi,psi_cl,normx,normy,normz,kappa)
+          call advect_vof_upwind(n, dli, dtau, u_ext, v_ext, w_ext, psi)
+          call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+          call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
           call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
           call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
           call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
           call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         end do
         !
-        ! ... and after it. The relaxation now writes psi_cl, not psi, so
-        ! vol_ext must equal vol_adv to the last bit -- the columns are kept as
-        ! the regression check on that. The step-to-step drift of V_out is the
-        ! difference of vol_adv between consecutive steps, both sampled at the
-        ! same point in the step.
+        ! ... and after it: vol_ext-vol_adv is what the relaxation injected.
         !
         call cmpt_massbal(n,dl,dzf,psi,vol_ext)
-        call rot_norm(n,dli,dzci,psi_cl,theta,is_bound,normx,normy,normz,kappa,Fs)
+        call rot_norm(n,dli,dzci,psi,theta,is_bound,normx,normy,normz,kappa,Fs)
         Fstot_old=Fstot
         call MPI_ALLREDUCE(Fs, Fstot, 3, MPI_REAL_RP, MPI_SUM, MPI_COMM_WORLD, ierr)
         if (myid==0) then
           PRINT *, "Fstot", Fstot
+        end if
+        !
+        ! project that injection back out of V_out. This runs after rot_norm so
+        ! the normals, kappa and Fs are still those of the relaxed psi, exactly
+        ! as before -- the correction is a volume fix and nothing else. vol_ext
+        ! is then re-probed, so the V_out_ext/V_out_adv pair in mass_data.csv
+        ! reports the residual after correction rather than the raw injection.
+        !
+        if(is_crrct_vout) then
+          call crrct_vout(n,dl,dzf,vol_ext(2)-vol_adv(2)+dvol_debt,psi,dvol_res)
+          call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+          call cmpt_massbal(n,dl,dzf,psi,vol_ext)
+          dvol_debt = dvol_res
+          if(myid == 0 .and. dvol_res /= 0._rp) then
+            print*, 'V_out correction capped, deferred to next step = ', dvol_res
+          end if
         end if
       else
         call initeul(n)

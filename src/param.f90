@@ -82,6 +82,14 @@ real(rp), protected               :: rho0 ! not an input
 integer , protected               :: max_pseudo_iter
 real(rp), protected               :: dtau_cfl
 real(rp), protected               :: alpha_min
+!
+! the contact-line relaxation in mod_extend advects psi in advective form on a
+! masked band, so it is a net source of fluid-1 volume. With is_crrct_vout the
+! injection is measured every step by mod_massbal and projected back out over
+! the diffuse solid shell (crrct_vout); with it off the relaxation runs as it
+! always did and the volume drift is left in.
+!
+logical , protected               :: is_crrct_vout
 #if defined(_OPENACC)
 !
 ! cuDecomp input parameters
@@ -125,7 +133,7 @@ contains
                   ka12,cp12,beta12, &
                   psi_thickness_factor
     namelist /contact_line/ &
-                  max_pseudo_iter,dtau_cfl,alpha_min
+                  max_pseudo_iter,dtau_cfl,alpha_min,is_crrct_vout
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -168,6 +176,11 @@ contains
     ! so an input.nml without a &contact_line group behaves exactly as before
     !
     max_pseudo_iter = 5; dtau_cfl = 0.3_rp; alpha_min = 0.5_rp
+    !
+    ! is_crrct_vout is new behaviour, not a restored hard-coded value: it
+    ! defaults on, so set it to F to reproduce runs from before it existed
+    !
+    is_crrct_vout = .true.
     !
     ! read input file
     !

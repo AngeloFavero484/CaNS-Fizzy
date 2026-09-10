@@ -91,9 +91,17 @@ compiled**. The live particle coupling is `prt_eulint.f90` + `prt_initeul.f90`.
   default on). The relaxation itself is unchanged and still writes `psi`; only
   the integrated volume error is removed. The near-wall pitting is **not**
   fixed by it.
-- **Do not re-propose the `psi_cl` reformulation** (relaxation on a persistent
-  copy, angle carried only by `kappa`). It was implemented in `f45d41a` and
-  reverted — the user rejected it on the results. Ask before revisiting.
+- **The near-wall nucleation is capillary-mediated, not written by the
+  relaxation.** Settled 2026-09-10: in the `psi_cl` build (`f45d41a`) the
+  relaxation cannot write `psi` at all and the voids were unchanged. The cause
+  is spurious `kappa` at the band edge, where the hard `alphac > alpha_min`
+  mask leaves a kink in the field `cmpt_norm_curv` differentiates. Do not
+  diagnose it as a conservation or donor-cell problem again.
+- **The `psi_cl` reformulation is reverted but not rejected in principle.**
+  It fixes volume exactly, leaves the nucleation untouched, and imposes the
+  contact angle *less* well — with `psi` unwritten, theta is held only
+  dynamically through `kappa`, and the kinematic drag turns out to matter.
+  Revisit only alongside a smoothed band edge; ask first.
 - **The shipped `Sessile_Drop` example is not a usable local test bed.** At
   `sigma = 1000` on 64x64x48 it goes marginal at `t ~ 0.09` (`dt_cfl` -> 1e-8,
   divergence abort) in some configurations and not others. Any mass-conservation

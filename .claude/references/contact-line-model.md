@@ -412,18 +412,33 @@ replaced. Low `alpha_min` relocates the defect from pitting to bridging; which
 one shows up depends on resolution and run length. There is no setting of
 `alpha_min` that removes it.
 
-### Still open — now decidable
+### Answered, 2026-09-10: the depressions are capillary-mediated
 
-Whether the depressions are written directly by the relaxation or are
-capillary-mediated through spurious curvature (`cmpt_norm_curv` runs on the
-relaxed `psi`, so a non-physical profile feeds `sigma*kappa*grad psi`). A
-`sigma = 0` run cannot separate them: with no surface tension the drop never
-wets, so there is no contact region to pit.
+The question was whether the relaxation writes them into `psi` directly, or
+whether they are driven through spurious curvature (`cmpt_norm_curv` runs on
+the relaxed field, so a non-physical profile feeds `sigma*kappa*grad psi`).
 
-The `psi_cl` build (commit `f45d41a`, reverted) would have answered this in one
-run — with the relaxation unable to write `psi`, surviving pits would prove they
-were capillary-mediated through `kappa`. It can still be used as a diagnostic
-build even though it was rejected as a model.
+The `psi_cl` build (`f45d41a`) settles it. There the relaxation **cannot write
+`psi` at all** — and the user reports the nucleation is unchanged, same as
+before. So the depressions are not written; they are **advected in by the flow
+that spurious `kappa` drives**.
+
+That relocates the defect. It is not the advective form, not the masked update,
+not the missing donor/receiver pairing — none of which can act on `psi` in that
+build. What survives is that **`kappa` is garbage at the band edge**: the
+relaxation writes inside `alphac > alpha_min` and not outside, so the relaxed
+field has a kink at the band boundary, and `cmpt_norm_curv` differentiates
+across it twice. The resulting capillary force pulls fluid into the band and
+pits the cells just outside it — which is exactly where the voids are observed,
+and exactly why `alpha_min` (which moves the band edge) is the knob that moves
+them while `max_pseudo_iter` and `dtau_cfl` (which change the strength, not the
+edge) do not.
+
+**Consequence for the fix:** it is a smoothness problem at the band edge, not a
+conservation problem. Ramping the relaxation strength continuously to zero as
+`alphac -> alpha_min`, instead of the current hard on/off mask in
+`compute_uextend`/`advect_vof_upwind` (`extend.f90:48,114`), would remove the
+kink and with it the spurious curvature. Not attempted.
 
 ### The fix, for both
 
@@ -435,16 +450,28 @@ the fluid-side band cells. `V_out` would then *decrease* at comparable
 magnitude — the sign flips, the drift does not go away. That earlier proposal
 is superseded; do not implement it.
 
-**Not the `psi_cl` boundary-condition reformulation either — tried and
-rejected, 2026-09-10.** That version ran the relaxation on a persistent copy so
-the transported `psi` was never written, making the extension exactly
-volume-preserving (verified bit-for-bit). It is recorded in commit `f45d41a`,
-reverted in `HEAD`. The user rejected it on the results; the specific objection
-is not recorded here. **Do not re-propose it without asking.** Its cost is that
-the contact angle is then enforced only dynamically through `kappa`, never
-kinematically, which changes the interface behaviour near the wall.
+**The `psi_cl` boundary-condition reformulation — tried 2026-09-10, reverted,
+not rejected in principle.** That version ran the relaxation on a persistent
+copy so the transported `psi` was never written, making the extension exactly
+volume-preserving (verified bit-for-bit). Commit `f45d41a`, reverted in
+`HEAD`. Two results from it, both from the user:
 
-**What is in the code now: an explicit projection.** See the next section.
+1. **The nucleation was unchanged.** That is the diagnostic result above — it
+   proves the pitting is capillary-mediated, not written. Worth the experiment
+   on its own.
+2. **It imposed the contact angle less well.** Expected, and the reason it is
+   not in `HEAD`: with `psi` untouched, theta is enforced only *dynamically*
+   through `kappa` in the momentum equation, never *kinematically*. The
+   kinematic drag turns out to matter for how tightly the angle is held.
+
+So `psi_cl` fixes volume but weakens the angle, and it does not touch the
+nucleation. It is a live option to revisit — most plausibly combined with a
+smoothed band edge (see above), which would fix the curvature that is the
+actual cause of the pitting — but on its own it trades one problem for another.
+
+**What is in the code now: an explicit projection.** See the next section. It
+keeps the kinematic enforcement (`psi` is still written, so the angle is held
+as it always was) and removes the volume error afterwards.
 
 ---
 

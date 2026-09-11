@@ -679,98 +679,51 @@ module prt_mod_intgr_nwtn_eulr
       !$omp do 
       do p=1,pmax
         if (ep(p)%mslv > 0) then
-          if (colrank(p) /= -1) then ! Particle with collision => dtp
-            ep(p)%u = op(p)%u + &
-                      (1.0_rp-colflgx(p))*( &
-                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fxltot+op(p)%fxltot)/(ep(p)%vol*rho_s) + &
-                      r_dtcoli*(ep(p)%intu-op(p)%intu)/(ep(p)%vol*rho_s)) + &
-                      rkcoeffab*dtp*gacc(1)*(1.0_rp-(ep(p)%intrhox/(ep(p)%vol*rho_s))) + &
-!                      (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapx+op(p)%fcapx)/(ep(p)%vol*rho_s) + &
-                      rkcoeffab*0.5_rp*dtp*(ep(p)%colfx+op(p)%colfx)/(ep(p)%vol*ep(p)%ratiorho) !+ &
-!                      rkcoeffab*dtp*0.5_rp*(Fstot(1)+Fstot_old(1))/(ep(p)%vol*rho_s)
-            ep(p)%x = op(p)%x + rkcoeffab*dtp*0.5_rp*(ep(p)%u+op(p)%u)
-!            PRINT *, "ep(p)%x", ep(p)%x
-            ep(p)%v = op(p)%v + &
-                      (1.0_rp-colflgy(p))*( &
-                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fyltot+op(p)%fyltot)/(ep(p)%vol*rho_s) + &
-                      r_dtcoli*(ep(p)%intv-op(p)%intv)/(ep(p)%vol*rho_s)) + &
-                      rkcoeffab*dtp*gacc(2)*(1.0_rp-(ep(p)%intrhoy/(ep(p)%vol*rho_s))) + &
-!                      (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapy+op(p)%fcapy)/(ep(p)%vol*rho_s) + &
-                      rkcoeffab*0.5_rp*dtp*(ep(p)%colfy+op(p)%colfy)/(ep(p)%vol*ep(p)%ratiorho) !+ &
-!                      rkcoeffab*dtp*0.5_rp*(Fstot(2)+Fstot_old(2))/(ep(p)%vol*rho_s)
-            ep(p)%y = op(p)%y + rkcoeffab*dtp*0.5_rp*(ep(p)%v+op(p)%v)
-            ep(p)%w = op(p)%w + &
-                      (1.0_rp-colflgz(p))*( &
-                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fzltot+op(p)%fzltot)/(ep(p)%vol*rho_s) + &
-                      r_dtcoli*(ep(p)%intw-op(p)%intw)/(ep(p)%vol*rho_s)) + &
-                      rkcoeffab*dtp*gacc(3)*(1.0_rp-(ep(p)%intrhoz/(ep(p)%vol*rho_s))) + &
-!                      (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapz+op(p)%fcapz)/(ep(p)%vol*rho_s) + &
-                      rkcoeffab*0.5_rp*dtp*(ep(p)%colfz+op(p)%colfz)/(ep(p)%vol*ep(p)%ratiorho) !+ &
-!                      rkcoeffab*dtp*0.5_rp*(Fstot(3)+Fstot_old(3))/(ep(p)%vol*rho_s)
-            ep(p)%z = op(p)%z + 0.5_rp*rkcoeffab*dtp*(ep(p)%w+op(p)%w)
-            ep(p)%omx = op(p)%omx + &
-                        (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqxltot+op(p)%torqxltot)/(ep(p)%mominert*rho_s) + &
-                        r_dtcoli*(ep(p)%intomx-op(p)%intomx)/(ep(p)%mominert*rho_s) !+ &
-!                        rkcoeffab*0.5_rp*dtp*(ep(p)%coltx+op(p)%coltx)/(ep(p)%mominert*ep(p)%ratiorho)
-            ep(p)%omy = op(p)%omy + &
-                        (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqyltot+op(p)%torqyltot)/(ep(p)%mominert*rho_s) + &
-                        r_dtcoli*(ep(p)%intomy-op(p)%intomy)/(ep(p)%mominert*rho_s) !+ &
-!                        rkcoeffab*0.5_rp*dtp*(ep(p)%colty+op(p)%colty)/(ep(p)%mominert*ep(p)%ratiorho)
-            ep(p)%omz = op(p)%omz + &
-                        (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqzltot+op(p)%torqzltot)/(ep(p)%mominert*rho_s) + &
-                        r_dtcoli*(ep(p)%intomz-op(p)%intomz)/(ep(p)%mominert*rho_s) !+ &
-!                        rkcoeffab*0.5_rp*dtp*(ep(p)%coltz+op(p)%coltz)/(ep(p)%mominert*ep(p)%ratiorho)
-            ep(p)%phi   = op(p)%phi + 0.5_rp*rkcoeffab*dtp*(ep(p)%omz+op(p)%omz)
-            ep(p)%omtheta = (ep(p)%omy*cos(ep(p)%phi)) - &
-                            (ep(p)%omx*sin(ep(p)%phi))
-            ep(p)%theta = op(p)%theta + rkcoeffab*dtp*0.5_rp*(ep(p)%omtheta+op(p)%omtheta)
-          else ! Particles without collision => dtp
-            ep(p)%u = op(p)%u + &
-                      (1.0_rp-colflgx(p))*( &
-                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fxltot+op(p)%fxltot)/(ep(p)%vol*rho_s) + &
-                      r_dtcoli*(ep(p)%intu-op(p)%intu)/(ep(p)%vol*rho_s)) + &
-                      rkcoeffab*dtp*gacc(1)*(1.0_rp-(ep(p)%intrhox/(ep(p)%vol*rho_s))) + &
-!                      (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapx+op(p)%fcapx)/(ep(p)%vol*rho_s) + &
-                      rkcoeffab*0.5_rp*dtp*(ep(p)%colfx+op(p)%colfx)/(ep(p)%vol*ep(p)%ratiorho) !+ &
-!                      rkcoeffab*dtp*0.5_rp*(Fstot(1)+Fstot_old(1))/(ep(p)%vol*rho_s)
-            ep(p)%x = op(p)%x + rkcoeffab*dtp*0.5_rp*(ep(p)%u+op(p)%u)
-!            PRINT *, "ep(p)%x", ep(p)%x
-            ep(p)%v = op(p)%v + &
-                      (1.0_rp-colflgy(p))*( &
-                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fyltot+op(p)%fyltot)/(ep(p)%vol*rho_s) + &
-                      r_dtcoli*(ep(p)%intv-op(p)%intv)/(ep(p)%vol*rho_s)) + &
-                      rkcoeffab*dtp*gacc(2)*(1.0_rp-(ep(p)%intrhoy/(ep(p)%vol*rho_s))) + &
-!                      (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapy+op(p)%fcapy)/(ep(p)%vol*rho_s) + &
-                      rkcoeffab*0.5_rp*dtp*(ep(p)%colfy+op(p)%colfy)/(ep(p)%vol*ep(p)%ratiorho) !+ &
-!                      rkcoeffab*dtp*0.5_rp*(Fstot(2)+Fstot_old(2))/(ep(p)%vol*rho_s)
-            ep(p)%y = op(p)%y + rkcoeffab*dtp*0.5_rp*(ep(p)%v+op(p)%v)
-            ep(p)%w = op(p)%w + &
-                      (1.0_rp-colflgz(p))*( &
-                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fzltot+op(p)%fzltot)/(ep(p)%vol*rho_s) + &
-                      r_dtcoli*(ep(p)%intw-op(p)%intw)/(ep(p)%vol*rho_s)) + &
-                      rkcoeffab*dtp*gacc(3)*(1.0_rp-(ep(p)%intrhoz/(ep(p)%vol*rho_s))) + &
-!                      (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapz+op(p)%fcapz)/(ep(p)%vol*rho_s) + &
-                      rkcoeffab*0.5_rp*dtp*(ep(p)%colfz+op(p)%colfz)/(ep(p)%vol*ep(p)%ratiorho) !+ &
-!                      rkcoeffab*dtp*0.5_rp*(Fstot(3)+Fstot_old(3))/(ep(p)%vol*rho_s)
-            ep(p)%z = op(p)%z + 0.5_rp*rkcoeffab*dtp*(ep(p)%w+op(p)%w)
-            !
-            ep(p)%omx = op(p)%omx + &
-                        (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqxltot+op(p)%torqxltot)/(ep(p)%mominert*rho_s) + &
-                        r_dtcoli*(ep(p)%intomx-op(p)%intomx)/(ep(p)%mominert*rho_s) !+ &
-!                        rkcoeffab*0.5_rp*dtp*(ep(p)%coltx+op(p)%coltx)/(ep(p)%mominert*ep(p)%ratiorho)
-            ep(p)%omy = op(p)%omy + &
-                        (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqyltot+op(p)%torqyltot)/(ep(p)%mominert*rho_s) + &
-                        r_dtcoli*(ep(p)%intomy-op(p)%intomy)/(ep(p)%mominert*rho_s) !+ &
-!                        rkcoeffab*0.5_rp*dtp*(ep(p)%colty+op(p)%colty)/(ep(p)%mominert*ep(p)%ratiorho)
-            ep(p)%omz = op(p)%omz + &
-                        (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqzltot+op(p)%torqzltot)/(ep(p)%mominert*rho_s) + &
-                        r_dtcoli*(ep(p)%intomz-op(p)%intomz)/(ep(p)%mominert*rho_s) !+ &
-!                        rkcoeffab*0.5_rp*dtp*(ep(p)%coltz+op(p)%coltz)/(ep(p)%mominert*ep(p)%ratiorho)
-            ep(p)%phi   = op(p)%phi + 0.5_rp*rkcoeffab*dtp*(ep(p)%omz+op(p)%omz)
-            ep(p)%omtheta = (ep(p)%omy*cos(ep(p)%phi)) - &
-                            (ep(p)%omx*sin(ep(p)%phi))
-            ep(p)%theta = op(p)%theta + rkcoeffab*dtp*0.5_rp*(ep(p)%omtheta+op(p)%omtheta)
-          endif
+          ! colliding or not, every particle advances with the sub-step dtp
+          ep(p)%u = op(p)%u + &
+                    (1.0_rp-colflgx(p))*( &
+                    (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fxltot+op(p)%fxltot)/(ep(p)%vol*rho_s) + &
+                    r_dtcoli*(ep(p)%intu-op(p)%intu)/(ep(p)%vol*rho_s)) + &
+                    rkcoeffab*dtp*gacc(1)*(1.0_rp-(ep(p)%intrhox/(ep(p)%vol*rho_s))) + &
+!                    (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapx+op(p)%fcapx)/(ep(p)%vol*rho_s) + &
+                    rkcoeffab*0.5_rp*dtp*(ep(p)%colfx+op(p)%colfx)/(ep(p)%vol*ep(p)%ratiorho) !+ &
+!                    rkcoeffab*dtp*0.5_rp*(Fstot(1)+Fstot_old(1))/(ep(p)%vol*rho_s)
+          ep(p)%x = op(p)%x + rkcoeffab*dtp*0.5_rp*(ep(p)%u+op(p)%u)
+!          PRINT *, "ep(p)%x", ep(p)%x
+          ep(p)%v = op(p)%v + &
+                    (1.0_rp-colflgy(p))*( &
+                    (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fyltot+op(p)%fyltot)/(ep(p)%vol*rho_s) + &
+                    r_dtcoli*(ep(p)%intv-op(p)%intv)/(ep(p)%vol*rho_s)) + &
+                    rkcoeffab*dtp*gacc(2)*(1.0_rp-(ep(p)%intrhoy/(ep(p)%vol*rho_s))) + &
+!                    (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapy+op(p)%fcapy)/(ep(p)%vol*rho_s) + &
+                    rkcoeffab*0.5_rp*dtp*(ep(p)%colfy+op(p)%colfy)/(ep(p)%vol*ep(p)%ratiorho) !+ &
+!                    rkcoeffab*dtp*0.5_rp*(Fstot(2)+Fstot_old(2))/(ep(p)%vol*rho_s)
+          ep(p)%y = op(p)%y + rkcoeffab*dtp*0.5_rp*(ep(p)%v+op(p)%v)
+          ep(p)%w = op(p)%w + &
+                    (1.0_rp-colflgz(p))*( &
+                    (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%fzltot+op(p)%fzltot)/(ep(p)%vol*rho_s) + &
+                    r_dtcoli*(ep(p)%intw-op(p)%intw)/(ep(p)%vol*rho_s)) + &
+                    rkcoeffab*dtp*gacc(3)*(1.0_rp-(ep(p)%intrhoz/(ep(p)%vol*rho_s))) + &
+!                    (-1._rp)*rkcoeffab*dtp*0.5_rp*(ep(p)%fcapz+op(p)%fcapz)/(ep(p)%vol*rho_s) + &
+                    rkcoeffab*0.5_rp*dtp*(ep(p)%colfz+op(p)%colfz)/(ep(p)%vol*ep(p)%ratiorho) !+ &
+!                    rkcoeffab*dtp*0.5_rp*(Fstot(3)+Fstot_old(3))/(ep(p)%vol*rho_s)
+          ep(p)%z = op(p)%z + 0.5_rp*rkcoeffab*dtp*(ep(p)%w+op(p)%w)
+          ep(p)%omx = op(p)%omx + &
+                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqxltot+op(p)%torqxltot)/(ep(p)%mominert*rho_s) + &
+                      r_dtcoli*(ep(p)%intomx-op(p)%intomx)/(ep(p)%mominert*rho_s) !+ &
+!                      rkcoeffab*0.5_rp*dtp*(ep(p)%coltx+op(p)%coltx)/(ep(p)%mominert*ep(p)%ratiorho)
+          ep(p)%omy = op(p)%omy + &
+                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqyltot+op(p)%torqyltot)/(ep(p)%mominert*rho_s) + &
+                      r_dtcoli*(ep(p)%intomy-op(p)%intomy)/(ep(p)%mominert*rho_s) !+ &
+!                      rkcoeffab*0.5_rp*dtp*(ep(p)%colty+op(p)%colty)/(ep(p)%mominert*ep(p)%ratiorho)
+          ep(p)%omz = op(p)%omz + &
+                      (-1.0_rp)*rkcoeffab*0.5_rp*dtp*(ep(p)%torqzltot+op(p)%torqzltot)/(ep(p)%mominert*rho_s) + &
+                      r_dtcoli*(ep(p)%intomz-op(p)%intomz)/(ep(p)%mominert*rho_s) !+ &
+!                      rkcoeffab*0.5_rp*dtp*(ep(p)%coltz+op(p)%coltz)/(ep(p)%mominert*ep(p)%ratiorho)
+          ep(p)%phi   = op(p)%phi + 0.5_rp*rkcoeffab*dtp*(ep(p)%omz+op(p)%omz)
+          ep(p)%omtheta = (ep(p)%omy*cos(ep(p)%phi)) - &
+                          (ep(p)%omx*sin(ep(p)%phi))
+          ep(p)%theta = op(p)%theta + rkcoeffab*dtp*0.5_rp*(ep(p)%omtheta+op(p)%omtheta)
         endif
       enddo
       !$omp end parallel

@@ -38,7 +38,7 @@ In `src/prt_param.f90`:
 4. If it is derived from others, compute it in the "derived quantities" block
    after the `read` calls.
 5. `use prt_mod_param, only: my_param` wherever it is consumed.
-6. Add it to the relevant `examples/Three_Phase/*/input.nml` files.
+6. Add it to the relevant `examples/Solid_Particles/*/*/input.nml` files.
 7. Document it in `.claude/references/input-namelists.md`.
 
 For a sentinel-style optional parameter (only meaningful in some configurations),

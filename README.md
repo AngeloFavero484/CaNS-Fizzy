@@ -96,8 +96,10 @@ src/               solver sources (flat; the Makefile globs it)
   extend.f90       contact-line relaxation
   rotnorm.f90      capillary force at the contact line
 examples/
-  Three_Phase/     particle + two-fluid cases (this fork)
-  Two_Phase/       upstream Fizzy validation cases
+  Solid_Particles/ particle cases (this fork)
+    Three_Phase/     particle + two fluids
+    Two_Phase/       particle + one fluid
+  Two_Fluids/      upstream Fizzy validation cases
   _CaNS-example-files/  single-phase CaNS heritage cases
 PostPrt/           standalone post-processing programs
 utils/             visualisation and binary-reading helpers
@@ -200,16 +202,23 @@ output. *The code must be recompiled after editing these files.*
 
 ### Example cases
 
-Under `examples/Three_Phase/`:
+Under `examples/Solid_Particles/Three_Phase/` (particle + two fluids):
 
 | case | description |
 |---|---|
 | `Bouncing_Sphere` | dense sphere impacting a flat liquid film and rebounding |
 | `Sinking_Sphere`  | same configuration at lower surface tension, the sphere penetrates |
-| `Wall_Collision`  | sphere impacting a wall in a single fluid |
 | `Head_On`         | sphere fired head-on at a droplet in zero gravity |
 | `Sessile_Drop`    | droplet resting on a sphere at a prescribed contact angle |
 | `Particle_Capture`| 500 particles interacting with a rising bubble |
+
+Under `examples/Solid_Particles/Two_Phase/` (particle + one fluid, no interface):
+
+| case | description |
+|---|---|
+| `Wall_Collision`  | sphere impacting a wall in a single fluid |
+| `Sedimentation`   | sphere settling onto the bottom wall, `rho_s/rho_f = 1120/960` |
+| `Static_Sphere`   | sphere held fixed (`is_solve_nwtn_eulr = F`) in zero gravity |
 
 Cases whose `inipsi` refers to spheres, cylinders or films (`bub3`, `drp3`, …)
 additionally require a `spheres.in` file.

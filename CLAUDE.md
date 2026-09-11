@@ -16,10 +16,18 @@ model, and the Adams–Bashforth driver in `main.f90` are local additions.
 See `.claude/references/upstream-divergence.md` for the exact delta.
 
 The directory path itself encodes the research lineage:
-`Multiphase/Three_Phase/Extended_CL/Adams_Bashfort/Bouncing_Sphere` —
-three-phase, extended contact line, Adams–Bashforth time integration,
-bouncing-sphere case. **Do not treat the path as throwaway**; sibling directories
-elsewhere on the user's disk are other variants of the same code.
+`Multiphase/Three_Phase/Extended_CL/Adams_Bashfort/Three_Phase` —
+three-phase, extended contact line, Adams–Bashforth time integration.
+(The last component was `Bouncing_Sphere` until 2026-09-11; old notes and
+transcripts may still use that name.) **Do not treat the path as throwaway**;
+sibling directories elsewhere on the user's disk are other variants of the same code.
+
+The example cases live in `examples/Solid_Particles/Three_Phase/` (particle +
+two fluids), `examples/Solid_Particles/Two_Phase/` (particle + one fluid:
+`Wall_Collision`, `Sedimentation`, `Static_Sphere`) and `examples/Two_Fluids/`
+(upstream Fizzy cases). Before commits `2d801ab`/`810b4e4` they were
+`examples/Three_Phase/<case>` and `examples/Two_Phase/<case>`; paths in older
+commits and notes use those names.
 
 ## Git remotes — important
 

@@ -39,7 +39,7 @@ must outlive the grant has to leave the cluster entirely; the user's habit is
 $WORK/bin/stage-run <case-name> [input.nml]
 ```
 
-Defaults to `src/input.nml`; pass an `examples/Three_Phase/*/input.nml` to start
+Defaults to `src/input.nml`; pass an `examples/Solid_Particles/*/*/input.nml` to start
 from a real case. It creates the run directory, copies the **binary** (not a
 symlink, so a later rebuild never rewrites the provenance of an old run), writes
 a `PROVENANCE` file (commit, branch, dirty flag, `build.conf`), and generates a
@@ -59,7 +59,7 @@ ng(i) = l(i) * (D_cells / D) = l(i) * D_cells / (2*radius)
 ```
 
 Check the example you started from — it is often coarser than assumed.
-`examples/Three_Phase/Bouncing_Sphere` ships at `ng = 64,64,48`, `l = 16,16,12`,
+`examples/Solid_Particles/Three_Phase/Bouncing_Sphere` ships at `ng = 64,64,48`, `l = 16,16,12`,
 `radius = 1`, i.e. `dx = 0.25` and **D = 8 cells**. Going to D = 32 is a 4×
 refinement in every direction: `ng = 256,256,192`.
 

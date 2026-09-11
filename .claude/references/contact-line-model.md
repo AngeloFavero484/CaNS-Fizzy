@@ -554,7 +554,7 @@ demonstrated win. It does **not** touch the pitting.
 
 ### Why the local numbers stop there — read before trusting any of this
 
-The shipped `examples/Three_Phase/Sessile_Drop` at `sigma = 1000` on 64x64x48 is
+The shipped `examples/Solid_Particles/Three_Phase/Sessile_Drop` at `sigma = 1000` on 64x64x48 is
 **marginal at t ~ 0.09**: `dt_cfl` collapses to ~1e-8 and the run aborts on the
 divergence check, in some configurations and not others, independently of any
 switch. Past step ~25 every number above is contaminated, `dt` has collapsed so

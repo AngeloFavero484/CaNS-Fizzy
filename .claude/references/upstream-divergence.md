@@ -53,9 +53,11 @@ Direction of travel is clear: **move hard-coded constants into `input.nml`**, an
 - `PostPrt/SphereData/` — surface force decomposition & interpolation
 - `src/poslfp/` — Lagrangian forcing-point post-processor
 
-### Examples — `examples/Three_Phase/`
-`Bouncing_Sphere`, `Sinking_Sphere`, `Head_On`, `Particle_Capture`,
-`Sessile_Drop`, `Wall_Collision`
+### Examples — `examples/Solid_Particles/`
+`Three_Phase/` (particle + two fluids): `Bouncing_Sphere`, `Sinking_Sphere`,
+`Head_On`, `Particle_Capture`, `Sessile_Drop`.
+`Two_Phase/` (particle + one fluid): `Wall_Collision`, `Sedimentation`,
+`Static_Sphere`.
 
 ---
 
@@ -74,7 +76,7 @@ Direction of travel is clear: **move hard-coded constants into `input.nml`**, an
 | `out2d.h90`, `out3d.h90` | `Alpha_C` output added; `Kappa` 3-D output commented out |
 | `build.conf` | `PARTICLE`, `EULER` switches; VOF+SDF defaults |
 | `configs/flags.mk` | `-D_PARTICLE`, `-D_EULER` mapping |
-| `examples/` | upstream cases moved under `Two_Phase/` |
+| `examples/` | upstream cases moved under `Two_Fluids/` |
 
 ---
 

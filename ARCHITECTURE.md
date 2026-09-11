@@ -30,8 +30,10 @@ For per-topic depth, see [`.claude/references/`](.claude/references/).
 │   ├── prt_out.h90         # include file: particle output hook
 │   └── poslfp/             # standalone Lagrangian-point post-processor
 ├── examples/
-│   ├── Two_Phase/          # upstream Fizzy validation cases
-│   ├── Three_Phase/        # THIS FORK's cases (particle + 2 fluids)
+│   ├── Two_Fluids/         # upstream Fizzy validation cases
+│   ├── Solid_Particles/    # THIS FORK's particle cases
+│   │   ├── Three_Phase/    #   particle + 2 fluids
+│   │   └── Two_Phase/      #   particle + 1 fluid
 │   └── _CaNS-example-files/# single-phase CaNS heritage cases
 ├── PostPrt/                # standalone post-processing programs
 │   ├── PrtPos/             # particle trajectory reader

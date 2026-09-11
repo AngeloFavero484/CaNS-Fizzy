@@ -10,24 +10,29 @@ A case is **one directory under `examples/`** containing `input.nml`, plus
 override unless the case genuinely needs different compile flags.
 
 ```
-examples/Three_Phase/<CaseName>/
+examples/Solid_Particles/<Three_Phase|Two_Phase>/<CaseName>/
 ├── input.nml
 └── spheres.in        # only for inipsi = 'bub3'/'drp3'/'bub2'/'drp1'/...
 ```
+
+`Three_Phase/` is for particle + two fluids; `Two_Phase/` is for particle + a
+single fluid (`is_track_interface = F`, `rho12(1) = rho12(2)`).
 
 To run: copy `input.nml` (and `spheres.in`) into `run/`, then
 `cd run && mpirun -n N ./cans`.
 
 ## Start from the closest existing case
 
-| case | what it is |
-|---|---|
-| `Bouncing_Sphere` | dense sphere falling onto a flat liquid film, bounces. `inipsi='flm'`, `theta=154`, `w_ini=-28.78` |
-| `Sinking_Sphere` | same setup, lower surface tension → sphere penetrates |
-| `Wall_Collision` | sphere impacting a wall, no interface (`inipsi='zer'`), fine grid `192×192×480` |
-| `Head_On` | sphere fired at a droplet, zero gravity, `theta=60` |
-| `Sessile_Drop` | droplet resting on a sphere, zero gravity, `theta=150` |
-| `Particle_Capture` | **`np=500`** particles + bubble, the only multi-particle case |
+| case | folder | what it is |
+|---|---|---|
+| `Bouncing_Sphere` | `Three_Phase/` | dense sphere falling onto a flat liquid film, bounces. `inipsi='flm'`, `theta=154`, `w_ini=-28.78` |
+| `Sinking_Sphere` | `Three_Phase/` | same setup, lower surface tension → sphere penetrates |
+| `Head_On` | `Three_Phase/` | sphere fired at a droplet, zero gravity, `theta=60` |
+| `Sessile_Drop` | `Three_Phase/` | droplet resting on a sphere, zero gravity, `theta=150` |
+| `Particle_Capture` | `Three_Phase/` | **`np=500`** particles + bubble, the only multi-particle case |
+| `Wall_Collision` | `Two_Phase/` | sphere impacting a wall, no interface, fine grid `192×192×480` |
+| `Sedimentation` | `Two_Phase/` | sphere settling onto the bottom wall, `rho_s/rho_f = 1120/960` |
+| `Static_Sphere` | `Two_Phase/` | sphere held fixed (`is_solve_nwtn_eulr = F`), zero gravity |
 
 Copy the nearest one and edit — do not write an `input.nml` from scratch.
 
@@ -96,7 +101,7 @@ far below the CFL `dt` means surface tension will dominate the timestep cost.
 Add the directory, then commit and push to `myfork` (never `origin`):
 
 ```bash
-git add examples/Three_Phase/<CaseName>/
+git add examples/Solid_Particles/<Three_Phase|Two_Phase>/<CaseName>/
 git commit -m "Add <CaseName> example case"
 git push myfork main
 ```
